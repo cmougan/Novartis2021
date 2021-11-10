@@ -127,3 +127,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# No CSV -- we need to be explicit in which ones we want
+.csv
