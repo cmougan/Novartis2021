@@ -89,7 +89,6 @@ def rolling_fn(
     setting: str = '30D',
     shift_periods: int = 1,
 ) -> pd.Series:
-    fn = getattr(pd.Series, function)()
     return (
         dataf
         .groupby(groupby_cols)[column]
@@ -98,7 +97,7 @@ def rolling_fn(
                 d
                 .shift(shift_periods)
                 .rolling(setting, min_periods=1)
-                .fn()
+                .agg(function)
             )
         )
     )
@@ -124,6 +123,9 @@ import pandas as pd
 method_name = 'mean'
 pd.Series([1, 2, 3]).__getattr__(method_name)()
 # %%
-pd.Series([1, 2, 3]).rolling(window=1).__getattr__('mean')()
+pd.Series([1, 2, 3]).rolling(window=2).agg('max')
+
+# %%
+pd.Series([1, 2, 3]).rolling(window=2).max()
 
 # %%
