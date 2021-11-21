@@ -1,5 +1,6 @@
 # %% Load birthday data
 import pandas as pd
+import numpy as np
 import sys
 sys.path.append('../')
 from tools.rolling import rolling_fn
@@ -80,28 +81,6 @@ unfilter_df.births.mean()
 unfilter_df.births.rolling(window=1).__getattr__('mean')()
 
 # %%
-import numpy as np
-def rolling_fn(
-    dataf: pd.DataFrame,
-    groupby_cols: str = None,
-    column: str = None,
-    function: str = 'mean',
-    setting: str = '30D',
-    shift_periods: int = 1,
-) -> pd.Series:
-    return (
-        dataf
-        .groupby(groupby_cols)[column]
-        .transform(
-            lambda d: (
-                d
-                .shift(shift_periods)
-                .rolling(setting, min_periods=1)
-                .agg(function)
-            )
-        )
-    )
-# %%
 (
     unfilter_df
     .set_index('date')
@@ -109,23 +88,27 @@ def rolling_fn(
         d,
         column='births',
         groupby_cols='state',
-        # function='mean',
         function='mean',
-        setting='30D'
+        setting='30D',
     ))
     .reset_index()
     .sort_values(["state", "date"])
 )
-# %%
-
-import pandas as pd
-
-method_name = 'mean'
-pd.Series([1, 2, 3]).__getattr__(method_name)()
-# %%
-pd.Series([1, 2, 3]).rolling(window=2).agg('max')
 
 # %%
-pd.Series([1, 2, 3]).rolling(window=2).max()
-
-# %%
+(
+    unfilter_df
+    .set_index('date')
+    .head(10000)
+    .assign(rolling_births=lambda d: rolling_fn(
+        d,
+        column='births',
+        groupby_cols='state',
+        # function='mean',
+        setting='30D',
+        function=np.quantile,
+        q=0.25
+    ))
+    .reset_index()
+    .sort_values(["state", "date"])
+)

@@ -9,6 +9,7 @@ def rolling_fn(
     function: str = 'mean',
     setting: str = '30D',
     shift_periods: int = 1,
+    *args, **kwargs
 ) -> pd.Series:
     return (
         dataf
@@ -18,7 +19,7 @@ def rolling_fn(
                 d
                 .shift(shift_periods)
                 .rolling(setting, min_periods=1)
-                .agg(function)
+                .agg(function, *args, **kwargs)
             )
         )
     )
