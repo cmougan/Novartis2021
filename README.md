@@ -7,4 +7,12 @@ https://github.com/cmougan/Novartis2020
 -- Inside pre-datathon there is the preparation
 
 
+## Installation
 
+To install the virtualenv with the requirements in python 3.8:
+
+```bash
+conda create -y --name novartis python==3.8
+conda activate novartis
+pip install -r requirements.txt
+```
