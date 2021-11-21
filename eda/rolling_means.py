@@ -93,6 +93,7 @@ unfilter_df.births.rolling(window=1).__getattr__('mean')()
     ))
     .reset_index()
     .sort_values(["state", "date"])
+    .query('state == "CA"')
 )
 
 # %%
@@ -112,3 +113,26 @@ unfilter_df.births.rolling(window=1).__getattr__('mean')()
     .reset_index()
     .sort_values(["state", "date"])
 )
+
+# %%
+ags = (
+    unfilter_df
+    .set_index('date')
+    .groupby('state')['births']
+    .shift(1)
+    .rolling('30D', min_periods=1)
+    .agg({'mean': 'mean', 'median': 'median', 'std': 'std'})
+    .reset_index()
+    # .transform(
+    #     lambda d: (
+    #         d
+    #         .shift(1)
+    #         .rolling('30D', min_periods=1)
+    #         .agg(['mean', 'median'])
+    #         # .agg({'mean': np.mean})
+    #     )
+    # )
+)
+# %%
+pd.concat([unfilter_df, ags], axis=1).query("state == 'CA'")
+# %%
