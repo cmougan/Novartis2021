@@ -9,3 +9,6 @@ altair==4.1.0
 scikit-lego==0.6.8
 ipykernel==6.4.2
 category-encoders==2.3.0
+doubt==4.1.0
+torch==1.10.0
+pandas-profiling==3.1.0

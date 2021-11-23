@@ -130,3 +130,5 @@ dmypy.json
 
 # No CSV -- we need to be explicit in which ones we want
 .csv
+.idea
+catboost_info
