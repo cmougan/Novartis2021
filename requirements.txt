@@ -9,3 +9,4 @@ altair==4.1.0
 scikit-lego==0.6.8
 ipykernel==6.4.2
 category-encoders==2.3.0
+memo==0.2.2
