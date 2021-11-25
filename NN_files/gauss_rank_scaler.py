@@ -37,7 +37,7 @@ class GaussRankScaler(BaseEstimator, TransformerMixin):
         ----------
         interp_func_ : list
             The interpolation function for each feature in the training set.
-        """
+    """
 
     def __init__(
         self,
