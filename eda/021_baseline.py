@@ -18,6 +18,7 @@ df_region = pd.read_csv("../data/data_raw/regions.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
+SUBMISSION_NAME = 'beta'
 
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
@@ -60,7 +61,16 @@ ground_truth_val = df_feats.query("validation == 1").loc[
     :, ["month", "region", "brand", "sales"]
 ]
 
+<<<<<<< HEAD
 print(ComputeMetrics(val_preds, sales_train, ground_truth_val))
+=======
+ComputeMetrics(val_preds, sales_train, ground_truth_val)
+
+# %% 
+val_preds.to_csv(f'../data/validation/{SUBMISSION_NAME}.csv', index=False)
+
+
+>>>>>>> 39a58cd9a614b48faa61db4eaf46dc3e8cede4d6
 # %% Test prediction
 predictions_test, intervals_test = model.predict(X_test, uncertainty=0.2)
 # %%
@@ -72,4 +82,9 @@ test_preds = (
     .assign(upper=intervals_test[:, 1])
 )
 
+<<<<<<< HEAD
 test_preds.to_csv("../submissions/beta.csv")
+=======
+test_preds.to_csv(f'../submissions/{SUBMISSION_NAME}.csv', index=False)
+
+>>>>>>> 39a58cd9a614b48faa61db4eaf46dc3e8cede4d6
