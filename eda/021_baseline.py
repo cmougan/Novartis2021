@@ -55,7 +55,7 @@ ground_truth_val = (
 ComputeMetrics(val_preds, sales_train, ground_truth_val)
 
 # %% 
-val_preds.to_csv(f'../data/validation/{SUBMISSION_NAME}.csv')
+val_preds.to_csv(f'../data/validation/{SUBMISSION_NAME}.csv', index=False)
 
 
 # %% Test prediction
@@ -70,5 +70,5 @@ test_preds = (
     .assign(upper=intervals_test[:, 1])
 )
 
-test_preds.to_csv(f'../submissions/{SUBMISSION_NAME}.csv')
+test_preds.to_csv(f'../submissions/{SUBMISSION_NAME}.csv', index=False)
 
