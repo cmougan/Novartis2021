@@ -37,11 +37,8 @@ y_train = torch.tensor(trainset.y)
 X_test = torch.tensor(testset.X.values)
 y_test = torch.tensor(testset.y)
 
-clf = TabNetClassifier()  #TabNetRegressor()
-clf.fit(
-  X_train, y_train,
-  eval_set=[(X_test, y_test)]
-)
+clf = TabNetClassifier()  # TabNetRegressor()
+clf.fit(X_train, y_train, eval_set=[(X_test, y_test)])
 preds = clf.predict(X_test)
 
 print(preds)
@@ -102,20 +99,17 @@ for epoch in range(n_epochs):
 
         losses.append(loss.item())
 
-
         if i % 50 == 0:
             auc_train.append(loss.detach().numpy())
             pred = nnet(X_test.float())
-            auc_test.append(
-                interval_score_loss(pred, y_test.float())
-            )
+            auc_test.append(interval_score_loss(pred, y_test.float()))
 
             # Figure
             plt.figure()
             plt.plot(auc_train, label="train")
             plt.plot(auc_test, label="test")
             plt.legend()
-            plt.ylim([0,3000])
+            plt.ylim([0, 3000])
             plt.savefig("output/auc_NN.png")
             plt.savefig("output/auc_NN.svg", format="svg")
             plt.close()

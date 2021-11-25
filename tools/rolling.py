@@ -1,25 +1,20 @@
 import pandas as pd
 
 
-
 def rolling_fn(
     dataf: pd.DataFrame,
     groupby_cols: str = None,
     column: str = None,
-    function: str = 'mean',
-    setting: str = '30D',
+    function: str = "mean",
+    setting: str = "30D",
     shift_periods: int = 1,
-    *args, **kwargs
+    *args,
+    **kwargs
 ) -> pd.Series:
-    return (
-        dataf
-        .groupby(groupby_cols)[column]
-        .transform(
-            lambda d: (
-                d
-                .shift(shift_periods)
-                .rolling(setting, min_periods=1)
-                .agg(function, *args, **kwargs)
-            )
+    return dataf.groupby(groupby_cols)[column].transform(
+        lambda d: (
+            d.shift(shift_periods)
+            .rolling(setting, min_periods=1)
+            .agg(function, *args, **kwargs)
         )
     )
