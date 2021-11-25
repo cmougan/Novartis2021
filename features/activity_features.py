@@ -52,36 +52,23 @@ df_activity_hcp = (
     .rename(columns={'month': 'activity_month'})
     .assign(activity_month_date=lambda x: x.activity_month.apply(lambda x: pd.to_datetime(x, format='%Y-%m')))
 )
+
 # %%
-df_activity_hcp
-# %%
-df_full_activity = (
+df_leaked_activity = (
     df_full
     .assign(month_date=lambda x: x.month.apply(lambda x: pd.to_datetime(x, format='%Y-%m')))
     .merge(df_activity_hcp, how='left', on=['region', 'brand'])
+)
+
+df_full_activity = (
+    df_leaked_activity
     # TODO: Use leakage in here
     .query('month >= activity_month')
 )
 
-# %%
-( 
-    df_full_activity
-    .assign(inverse_tier=lambda x: 3 - x.tier)
-    .groupby(INDEX, as_index=False)
-    .agg({
-        'count': 'sum', 
-        'tier': lambda x: x.isnull().sum(),
-        'inverse_tier': 'sum'
-    })
-    .rename(columns={'tier': 'null_tiers'})
-)
-
-# %%
-df_full_activity.head()
-# %%
-
-
-
+df_lag_3m = df_full_activity[
+    df_full_activity.activity_month_date + pd.DateOffset(months=3) >= df_full_activity.month_date
+]
 
 # %%
 basic_features = count_tier_features(df_full_activity)
@@ -89,16 +76,19 @@ basic_features_channel = count_tier_features(df_full_activity, 'channel')
 basic_features_specialty = count_tier_features(df_full_activity, 'specialty')
 
 # %%
-df_lag_3m = df_full_activity[
-    df_full_activity.activity_month_date + pd.DateOffset(months=3) >= df_full_activity.month_date
-]
-# %%
 basic_features_3m = rename_cols_3m(count_tier_features(df_lag_3m))
 basic_features_channel_3m = rename_cols_3m(count_tier_features(df_lag_3m, 'channel'))
 basic_features_specialty_3m = rename_cols_3m(count_tier_features(df_lag_3m, 'specialty'))
 
 # %%
-
-# %%
-rename_cols_3m(basic_features_3m)
-# %%
+df_activity_features = (
+    df_full
+    .merge(basic_features, on=INDEX, how='left')
+    .merge(basic_features_channel, on=INDEX, how='left')
+    .merge(basic_features_specialty, on=INDEX, how='left')
+    .merge(basic_features_3m, on=INDEX, how='left')
+    .merge(basic_features_channel_3m, on=INDEX, how='left')
+    .merge(basic_features_specialty_3m, on=INDEX, how='left')
+)
+# %% Save to features/activity_features.csv
+df_activity_features.to_csv('../data/features/activity_features.csv', index=False)
