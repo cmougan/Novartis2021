@@ -4,3 +4,5 @@ Doubt package: https://saattrupdan.github.io/2021-04-04-doubt/
 
 Bootstrapping prediction intervals
 https://saattrupdan.github.io/2020-03-01-bootstrap-prediction/
+
+Revisiting Deep Learning Models for Tabular Data https://arxiv.org/abs/2106.11959
