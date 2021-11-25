@@ -31,21 +31,19 @@ y_test = df_feats.query('validation.isnull()', engine='python').sales
 
 
 # %% Train model
-y_val * 0 + y_train.median()
-# %% Train model
-# model = Boot(LinearRegression())
-# model.fit(X_train, y_train)
+model = Boot(LinearRegression())
+model.fit(X_train, y_train)
 
 # %% Validation prediction
-# predictions, intervals = model.predict(X_val, uncertainty=0.2)
+predictions, intervals = model.predict(X_val, uncertainty=0.2)
 
 val_preds = (
     df_feats
     .query('validation == 1')
     .loc[:, ['month', 'region', 'brand']]
-    .assign(sales=y_val * 0 + y_train.mean())
-    .assign(lower=y_val * 0 + y_train.quantile(0.1))
-    .assign(upper=y_val * 0 + y_train.quantile(0.9))
+    .assign(sales=predictions)
+    .assign(lower=intervals[:, 0])
+    .assign(upper=intervals[:, 1])
 )
 
 ground_truth_val = (
