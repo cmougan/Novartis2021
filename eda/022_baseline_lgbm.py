@@ -74,7 +74,7 @@ for quantile in [0.5, 0.1, 0.9]:
     test_preds[quantile] = pipes[quantile].predict(X_test)
 
 # %% Train prediction
-train_preds = (
+train_preds_df = (
     df_feats
     .query('validation == 0')
     .loc[:, ['month', 'region', 'brand']]
@@ -89,10 +89,10 @@ ground_truth_train = (
     .loc[:, ['month', 'region', 'brand', 'sales']]
 )
 
-ComputeMetrics(train_preds, sales_train, ground_truth_train)
+ComputeMetrics(train_preds_df, sales_train, ground_truth_train)
 
 # %% Validation prediction
-val_preds = (
+val_preds_df = (
     df_feats
     .query('validation == 1')
     .loc[:, ['month', 'region', 'brand']]
@@ -107,14 +107,14 @@ ground_truth_val = (
     .loc[:, ['month', 'region', 'brand', 'sales']]
 )
 
-ComputeMetrics(val_preds, sales_train, ground_truth_val)
+ComputeMetrics(val_preds_df, sales_train, ground_truth_val)
 
 # %% 
-val_preds.to_csv(f'../data/validation/{SUBMISSION_NAME}.csv', index=False)
+val_preds_df.to_csv(f'../data/validation/{SUBMISSION_NAME}.csv', index=False)
 
 
 # %% Test prediction
-test_preds = (
+test_preds_df = (
     df_feats
     .query('validation.isnull()', engine='python')
     .loc[:, ['month', 'region', 'brand']]
@@ -123,7 +123,7 @@ test_preds = (
     .assign(upper=test_preds[0.9])
 )
 
-test_preds.to_csv(f'../submissions/{SUBMISSION_NAME}.csv', index=False)
+test_preds_df.to_csv(f'../submissions/{SUBMISSION_NAME}.csv', index=False)
 
 
 # %%
