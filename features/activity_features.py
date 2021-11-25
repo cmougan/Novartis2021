@@ -89,6 +89,7 @@ df_activity_features = (
     .merge(basic_features_3m, on=INDEX, how='left')
     .merge(basic_features_channel_3m, on=INDEX, how='left')
     .merge(basic_features_specialty_3m, on=INDEX, how='left')
+    .drop(columns=['sales', 'validation'])
 )
 # %% Save to features/activity_features.csv
 df_activity_features.to_csv('../data/features/activity_features.csv', index=False)

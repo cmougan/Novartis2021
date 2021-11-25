@@ -30,20 +30,12 @@ X_test = df_feats.query('validation.isnull()', engine='python').loc[:, ['area', 
 y_test = df_feats.query('validation.isnull()', engine='python').sales
 
 
-# %% Train model
-y_val * 0 + y_train.median()
-# %% Train model
-# model = Boot(LinearRegression())
-# model.fit(X_train, y_train)
-
 # %% Validation prediction
-# predictions, intervals = model.predict(X_val, uncertainty=0.2)
-
 val_preds = (
     df_feats
     .query('validation == 1')
     .loc[:, ['month', 'region', 'brand']]
-    .assign(sales=y_val * 0 + y_train.mean())
+    .assign(sales=y_val * 0 + y_train.median())
     .assign(lower=y_val * 0 + y_train.quantile(0.1))
     .assign(upper=y_val * 0 + y_train.quantile(0.9))
 )
@@ -56,21 +48,4 @@ ground_truth_val = (
 
 ComputeMetrics(val_preds, sales_train, ground_truth_val)
 
-# %% 
-val_preds.to_csv(f'../data/validation/{SUBMISSION_NAME}.csv', index=False)
-
-
-# %% Test prediction
-predictions_test, intervals_test = model.predict(X_test, uncertainty=0.2)
 # %%
-test_preds = (
-    df_feats
-    .query('validation.isnull()', engine='python')
-    .loc[:, ['month', 'region', 'brand']]
-    .assign(sales=predictions_test)
-    .assign(lower=intervals_test[:, 0])
-    .assign(upper=intervals_test[:, 1])
-)
-
-test_preds.to_csv(f'../submissions/{SUBMISSION_NAME}.csv', index=False)
-
