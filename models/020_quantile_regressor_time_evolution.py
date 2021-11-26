@@ -146,24 +146,13 @@ for i, month in enumerate(list(months)):
     print("Month: ", month)
     for quantile in [0.5, 0.1, 0.9]:
 
-        models[month][quantile] = QuantileRegressor(
-            quantile=quantile,
-            alpha=0,
-            solver="highs-ds"
-        )
-
-        pipes[month][quantile] = Pipeline(
-            [   
-                ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-                ("selector", ColumnSelector(columns=select_cols)),
-                ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
-                ("scale", StandardScaler()),
-                ("qr", models[month][quantile])
-            ]
-        )
+        cols = select_cols.copy()
 
         # Previous month predictions
         for i_month in range(i):
+            # How to skip all the months but the last
+            # if i_month >= i - 1:
+            #     continue
             previous_month = months[i_month]
             for q in [0.5, 0.1, 0.9]:
                 Xs[month][f"{previous_month}_pred_{q}"] = \
@@ -175,6 +164,24 @@ for i, month in enumerate(list(months)):
                 Xs_full[month][f"{previous_month}_pred_{q}"] = \
                     pipes[previous_month][quantile].predict(Xs_full[previous_month])
 
+                cols.append(f"{previous_month}_pred_{q}")  
+
+
+        models[month][quantile] = QuantileRegressor(
+            quantile=quantile,
+            alpha=0,
+            solver="highs-ds"
+        )
+
+        pipes[month][quantile] = Pipeline(
+            [   
+                ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
+                ("selector", ColumnSelector(columns=cols)),
+                ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
+                ("scale", StandardScaler()),
+                ("qr", models[month][quantile])
+            ]
+        )
 
         # Fit cv model
         pipes[month][quantile].fit(Xs[month], ys[month])
