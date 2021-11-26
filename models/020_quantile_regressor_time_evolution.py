@@ -1,4 +1,5 @@
 # %% Imports
+from os import pipe
 import pandas as pd
 import sys
 import numpy as np
@@ -35,7 +36,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "linear_model_simple"
+SUBMISSION_NAME = "linear_model_time_evol"
 RETRAIN = True
 
 # %% Training weights
@@ -102,58 +103,132 @@ select_cols = [
 
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
+
+
 # %%
+months = X_train.month.sort_values().unique()
+
+Xs = {}
+ys = {}
+Xs_val = {}
+ys_val = {}
+Xs_test = {}
+ys_test = {}
+Xs_full = {}
+ys_full = {}
+
 models = {}
 pipes = {}
 train_preds = {}
 val_preds = {}
 test_preds = {}
 
-for quantile in [0.5, 0.1, 0.9]:
+for i, month in enumerate(list(months)):
+    
+    Xs[month] = X_train.copy()[X_train.month == month]
+    ys[month] = y_train.copy()[X_train.month == month]
+    Xs_val[month] = X_val.copy()[X_val.month == month]
+    ys_val[month] = y_val.copy()[X_val.month == month]
+    Xs_test[month] = X_test.copy()[X_test.month == month]
+    ys_test[month] = y_test.copy()[X_test.month == month]
+    Xs_full[month] = X_full.copy()[X_full.month == month]
+    ys_full[month] = y_full.copy()[X_full.month == month]
+    models[month] = {}
+    pipes[month] = {}
+    train_preds[month] = {}
+    val_preds[month] = {}
+    test_preds[month] = {}
 
-    print("Quantile:", quantile)
-    models[quantile] = QuantileRegressor(
-        quantile=quantile,
-        alpha=0,
-        solver="highs-ds"
-    )
+    print("Month: ", month)
+    for quantile in [0.5, 0.1, 0.9]:
 
-    pipes[quantile] = Pipeline(
-        [   
-            ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-            ("selector", ColumnSelector(columns=select_cols)),
-            ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
-            ("scale", StandardScaler()),
-            ("qr", models[quantile])
-        ]
-    )
+        models[month][quantile] = QuantileRegressor(
+            quantile=quantile,
+            alpha=0,
+            solver="highs-ds"
+        )
 
-    # Fit cv model
-    pipes[quantile].fit(X_train, y_train)
-    # , qr__sample_weight=weights_train)
+        pipes[month][quantile] = Pipeline(
+            [   
+                ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
+                ("selector", ColumnSelector(columns=select_cols)),
+                ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
+                ("scale", StandardScaler()),
+                ("qr", models[month][quantile])
+            ]
+        )
 
-    train_preds[quantile] = pipes[quantile].predict(X_train)
-    val_preds[quantile] = pipes[quantile].predict(X_val)
+        # Previous month predictions
+        for i_month in range(i):
+            previous_month = months[i_month]
+            for q in [0.5, 0.1, 0.9]:
+                Xs[month][f"{previous_month}_pred_{q}"] = \
+                    pipes[previous_month][quantile].predict(Xs[previous_month])
+                Xs_val[month][f"{previous_month}_pred_{q}"] = \
+                    pipes[previous_month][quantile].predict(Xs_val[previous_month])
+                Xs_test[month][f"{previous_month}_pred_{q}"] = \
+                    pipes[previous_month][quantile].predict(Xs_test[previous_month])
+                Xs_full[month][f"{previous_month}_pred_{q}"] = \
+                    pipes[previous_month][quantile].predict(Xs_full[previous_month])
 
-    if RETRAIN:
-        pipes[quantile].fit(X_full, y_full)
-        # , qr__sample_weight=weights_full)
-    test_preds[quantile] = pipes[quantile].predict(X_test)
+
+        # Fit cv model
+        pipes[month][quantile].fit(Xs[month], ys[month])
+
+        train_preds[month][quantile] = pipes[month][quantile].predict(Xs[month])
+        val_preds[month][quantile] = pipes[month][quantile].predict(Xs_val[month])
+
+        # if RETRAIN:
+        #     pipes[month][quantile].fit(Xs_full[month], y_full[month])
+            # , qr__sample_weight=weights_full)
+        test_preds[month][quantile] = pipes[month][quantile].predict(Xs_test[month])
 
 # %% Postprocess
-train_preds_post = postprocess_predictions(train_preds)
-val_preds_post = postprocess_predictions(val_preds)
-test_preds_post = postprocess_predictions(test_preds)
 
-# %% Train prediction
+name_mapping = {"sales": 0.5, "lower": 0.1, "upper": 0.9}
+
 train_preds_df = (
     df_feats.query("validation == 0")
     .loc[:, ["month", "region", "brand"]]
-    .assign(sales=train_preds_post[0.5])
-    .assign(lower=train_preds_post[0.1])
-    .assign(upper=train_preds_post[0.9])
+    .assign(sales=0)
+    .assign(lower=0)
+    .assign(upper=0)
 )
 
+for month, d in train_preds.items():
+    for name, quantile in name_mapping.items():
+        train_preds_df.loc[train_preds_df.month == month, name] = d[quantile]
+
+val_preds_df = (
+    df_feats.query("validation == 1")
+    .loc[:, ["month", "region", "brand"]]
+    .assign(sales=0)
+    .assign(lower=0)
+    .assign(upper=0)
+)
+
+for month, d in val_preds.items():
+    for name, quantile in name_mapping.items():
+        val_preds_df.loc[val_preds_df.month == month, name] = d[quantile]
+
+test_preds_df = (
+    df_feats.query("validation.isnull()", engine="python")
+    .loc[:, ["month", "region", "brand"]]
+    .assign(sales=0)
+    .assign(lower=0)
+    .assign(upper=0)
+)
+
+for month, d in test_preds.items():
+    for name, quantile in name_mapping.items():
+        test_preds_df.loc[test_preds_df.month == month, name] = d[quantile]
+
+# %% TODO: postprocessing
+# train_preds_post = postprocess_predictions(train_preds)
+# val_preds_post = postprocess_predictions(val_preds)
+# test_preds_post = postprocess_predictions(test_preds)
+
+# %% Train prediction
 ground_truth_train = df_feats.query("validation == 0").loc[
     :, ["month", "region", "brand", "sales"]
 ]
@@ -161,14 +236,6 @@ ground_truth_train = df_feats.query("validation == 0").loc[
 print(ComputeMetrics(train_preds_df, sales_train, ground_truth_train))
 
 # %% Validation prediction
-val_preds_df = (
-    df_feats.query("validation == 1")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=val_preds_post[0.5])
-    .assign(lower=val_preds_post[0.1])
-    .assign(upper=val_preds_post[0.9])
-)
-
 ground_truth_val = df_feats.query("validation == 1").loc[
     :, ["month", "region", "brand", "sales"]
 ]
@@ -180,14 +247,6 @@ val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}_val.csv", index=False
 
 
 # %% Test prediction
-test_preds_df = (
-    df_feats.query("validation.isnull()", engine="python")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=test_preds_post[0.5])
-    .assign(lower=test_preds_post[0.1])
-    .assign(upper=test_preds_post[0.9])
-)
-
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
 
 
