@@ -2,9 +2,10 @@
 import pandas as pd
 import sys
 import numpy as np
+import random
 
-sys.path.append("../")
-from metrics.metric_participants import ComputeMetrics
+
+from functools import partial
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sktools import IsEmptyExtractor
@@ -13,10 +14,11 @@ from category_encoders import TargetEncoder
 from sklearn.linear_model import QuantileRegressor
 from sklego.preprocessing import ColumnSelector 
 from sklearn.preprocessing import StandardScaler
-import random
-
 from memo import memlist, memfile, grid, time_taken, Runner
 
+sys.path.append("../")
+
+from metrics.metric_participants import ComputeMetrics
 from eda.checker import check_train_test
 
 random.seed(0)
@@ -82,6 +84,9 @@ select_cols = [
     'month',
     'brand'
 ]
+# select_cols = [
+#     'Internal medicine and general practicioner', 'Pediatrician', 'count', 'null_tiers', 'null_tiers_phone', 'inverse_tier_f2f', 'hcp_distinct_Internal medicine / pneumology', 'sales_brand_3', 'sales_brand_12_market', 'month_brand',
+# ]
 
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
@@ -109,7 +114,7 @@ def train_and_validate(alpha, X_train, y_train, X_val, df_feats):
             [   
                 ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
                 ("empty", IsEmptyExtractor(cols=["count", "count_other", "inverse_tier_other", "count_Pediatrician"])),
-                # ("selector", ColumnSelector(columns=select_cols)),
+                ("selector", ColumnSelector(columns=select_cols)),
                 ("imputer", SimpleImputer(strategy="median")), 
                 ("scale", StandardScaler()),
                 ("lgb", models[quantile])
@@ -138,7 +143,6 @@ def train_and_validate(alpha, X_train, y_train, X_val, df_feats):
     return {"accuracy": metrics[0], "deviation": metrics[1]}
 
 # %%
-from functools import partial
 partial_train_and_validate = partial(
     train_and_validate, 
     X_train=X_train,
@@ -147,7 +151,7 @@ partial_train_and_validate = partial(
     df_feats=df_feats
 )
 
-settings = grid(alpha=[0, 0.01, 0.05, 0.1])
+settings = grid(alpha=[0, 0.0005, 0.001, 0.005])
 
 # To Run in parallel
 runner = Runner()

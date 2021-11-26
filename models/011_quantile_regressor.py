@@ -33,6 +33,7 @@ rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
 random.seed(0)
 VAL_SIZE = 38
 SUBMISSION_NAME = "linear_model_simple"
+RETRAIN = True
 
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
@@ -55,6 +56,12 @@ y_train = df_feats.query("validation == 0").sales
 
 X_val = df_feats.query("validation == 1").drop(columns=cols_to_drop)
 y_val = df_feats.query("validation == 1").sales
+
+X_full = df_feats.query("validation.notnull()", engine="python").drop(
+    columns=cols_to_drop
+)
+y_full = df_feats.query("validation.notnull()", engine="python").sales
+
 
 X_test = df_feats.query("validation.isnull()", engine="python").drop(
     columns=cols_to_drop
@@ -115,6 +122,10 @@ for quantile in [0.5, 0.1, 0.9]:
 
     train_preds[quantile] = pipes[quantile].predict(X_train)
     val_preds[quantile] = pipes[quantile].predict(X_val)
+    test_preds[quantile] = pipes[quantile].predict(X_test)
+
+    if RETRAIN:
+        pipes[quantile].fit(X_full, y_full)
     test_preds[quantile] = pipes[quantile].predict(X_test)
 
 # %% Train prediction
