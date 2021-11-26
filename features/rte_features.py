@@ -7,6 +7,10 @@ def flatten_columns(df):
     df.columns = [re.sub(r'_$', '', col) for col in df.columns]
     return df
 
+def rename_cols_3m(df):
+    df.columns = [f"{col}_3m" if col not in INDEX else col for col in df.columns]
+    return df
+
 df_full = pd.read_csv('../data/split.csv')
 df_activity = pd.read_csv('../data/data_raw/activity.csv')
 df_rte_raw = pd.read_csv('../data/data_raw/rtes.csv')
@@ -41,6 +45,7 @@ def aggs_rte_fn(df, columns=[]):
         .agg({
             'tier_openings': 'sum',
             'no. openings': 'sum',
+            'no. clicks': 'sum',
             'hcp': pd.Series.nunique,
         })
         .rename(columns={'hcp': 'hcp_distinct'})
@@ -51,7 +56,7 @@ def aggs_rte_fn(df, columns=[]):
 
     return (
         base_df
-        .pivot(index=idx, columns=columns, values=['tier_openings', 'no. openings', 'hcp_distinct'])
+        .pivot(index=idx, columns=columns, values=['tier_openings', 'no. openings', 'no. clicks', 'hcp_distinct'])
         .reset_index()
         .pipe(flatten_columns)
     )
@@ -71,12 +76,32 @@ def join_and_sum(df, aggs_df):
         .query("month_sent <= month")
         .groupby(INDEX, as_index=False)
         .sum()
-    )    
+    )
+
+def join_3m_and_sum(df, aggs_df):
+    df_ = (
+        df
+        .assign(month_date=lambda x: x.month.apply(lambda x: pd.to_datetime(x, format="%Y-%m")))
+        .drop(columns=['sales', 'validation'])
+        .merge(aggs_df, how='left', on=['region', 'brand'])
+        .query("month_sent <= month")
+    )
+
+    return df_[
+        df_.month_sent.dt.to_timestamp() + pd.DateOffset(months=3) >= df_.month_date
+    ].reset_index(drop=True).groupby(INDEX, as_index=False).sum()
+
 
 # %%
 df_full_ = join_and_sum(df_full, aggs_rte)
 df_full_specialty = join_and_sum(df_full, aggs_rte_specialty)
 df_full_email_type = join_and_sum(df_full, aggs_rte_email_type)
+
+
+# %% 3 months metrics
+df_full_3m = rename_cols_3m(join_3m_and_sum(df_full, aggs_rte))
+df_full_specialty_3m = rename_cols_3m(join_3m_and_sum(df_full, aggs_rte_specialty))
+df_full_email_type_3m = rename_cols_3m(join_3m_and_sum(df_full, aggs_rte_email_type))
 
 # %%
 (
@@ -84,6 +109,9 @@ df_full_email_type = join_and_sum(df_full, aggs_rte_email_type)
     .merge(df_full_, on=INDEX, how='left')
     .merge(df_full_specialty, on=INDEX, how='left')
     .merge(df_full_email_type, on=INDEX, how='left')
-    .to_csv('../data/features/rte_basic_features.csv', index=False)
+    .merge(df_full_3m, on=INDEX, how='left')
+    .merge(df_full_specialty_3m, on=INDEX, how='left')
+    .merge(df_full_email_type_3m, on=INDEX, how='left')
+    .to_csv('../data/features/rte_features_v2.csv', index=False)
 )
 # %%
