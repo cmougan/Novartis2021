@@ -134,3 +134,5 @@ dmypy.json
 .idea
 catboost_info
 .DS_Store
+.Rproj.user
+*.Rproj
