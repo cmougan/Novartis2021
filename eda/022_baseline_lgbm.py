@@ -1,6 +1,7 @@
 # %% Imports
 import pandas as pd
 import sys
+import numpy as np
 
 sys.path.append("../")
 from metrics.metric_participants import ComputeMetrics
@@ -17,6 +18,7 @@ df_full = pd.read_csv("../data/split.csv")
 df_region = pd.read_csv("../data/data_raw/regions.csv")
 regions_hcps = pd.read_csv('../data/data_raw/regions_hcps.csv')
 activity_features = pd.read_csv('../data/features/activity_features.csv')
+brands_3_12 = pd.read_csv('../data/features/brand_3_12_market_features_lagged.csv')
 
 # For reproducibility
 random.seed(0)
@@ -27,6 +29,9 @@ SUBMISSION_NAME = 'first_lightgbm'
 df_feats = df_full.merge(df_region, on="region", how="left")
 df_feats = pd.merge(left = df_feats, right=regions_hcps, how='left', on='region')
 df_feats = df_feats.merge(activity_features, on=['month', 'region', 'brand'], how='left')
+df_feats = df_feats.merge(brands_3_12, on=['month', 'region'], how='left')
+
+df_feats['whichBrand'] = np.where(df_feats.brand=='brand_1',1,0)
 
 # drop sum variables
 cols_to_drop=['month', 'region', 'brand', 'sales', 'validation']
@@ -89,7 +94,7 @@ ground_truth_train = (
     .loc[:, ['month', 'region', 'brand', 'sales']]
 )
 
-ComputeMetrics(train_preds_df, sales_train, ground_truth_train)
+print(ComputeMetrics(train_preds_df, sales_train, ground_truth_train))
 
 # %% Validation prediction
 val_preds_df = (
@@ -107,7 +112,7 @@ ground_truth_val = (
     .loc[:, ['month', 'region', 'brand', 'sales']]
 )
 
-ComputeMetrics(val_preds_df, sales_train, ground_truth_val)
+print(ComputeMetrics(val_preds_df, sales_train, ground_truth_val))
 
 # %% 
 val_preds_df.to_csv(f'../data/validation/{SUBMISSION_NAME}.csv', index=False)
