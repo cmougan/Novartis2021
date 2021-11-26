@@ -121,7 +121,7 @@ for quantile in [0.5, 0.1, 0.9]:
     pipes[quantile] = Pipeline(
         [   
             ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-            # ("selector", ColumnSelector(columns=select_cols)),
+             ("selector", ColumnSelector(columns=select_cols)),
             ("empty", IsEmptyExtractor()),
             ("imputer", SimpleImputer(strategy="median")), 
             ("lgb", lgbms[quantile])
@@ -135,8 +135,7 @@ for quantile in [0.5, 0.1, 0.9]:
     train_preds[quantile] = pipes[quantile].predict(X_train)
     val_preds[quantile] = pipes[quantile].predict(X_val)
 
-    if RETRAIN:
-        pipes[quantile].fit(X_full, y_full)
+
         # , lgb__sample_weight=weights_full)
     test_preds[quantile] = pipes[quantile].predict(X_test)
 

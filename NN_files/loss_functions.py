@@ -1,7 +1,8 @@
 import torch
 
 
-def interval_score_loss(predictions, real, alpha=0.28):
+def interval_score_loss(predictions, real, alpha=0.2
+                        ):
     """
     Taken from: https://stats.stackexchange.com/questions/194660/forecast-accuracy-metric-that-involves-prediction-intervals
     Need to predict lower and upper bounds of interval, use target to assess error.
