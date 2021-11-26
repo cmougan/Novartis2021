@@ -151,8 +151,8 @@ for i, month in enumerate(list(months)):
         # Previous month predictions
         for i_month in range(i):
             # How to skip all the months but the last
-            # if i_month >= i - 1:
-            #     continue
+            if i_month >= i - 3:
+                continue
             previous_month = months[i_month]
             for q in [0.5, 0.1, 0.9]:
                 Xs[month][f"{previous_month}_pred_{q}"] = \
@@ -189,8 +189,8 @@ for i, month in enumerate(list(months)):
         train_preds[month][quantile] = pipes[month][quantile].predict(Xs[month])
         val_preds[month][quantile] = pipes[month][quantile].predict(Xs_val[month])
 
-        # if RETRAIN:
-        #     pipes[month][quantile].fit(Xs_full[month], y_full[month])
+        if RETRAIN:
+            pipes[month][quantile].fit(Xs_full[month], ys_full[month])
             # , qr__sample_weight=weights_full)
         test_preds[month][quantile] = pipes[month][quantile].predict(Xs_test[month])
 
