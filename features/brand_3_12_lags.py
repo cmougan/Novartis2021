@@ -15,4 +15,14 @@ for col in ["sales_brand_3", "sales_brand_3_market", "sales_brand_12_market"]:
     for i in range(1, 12):
         data = grouped(data, col=col, shifter=i)
 
+reg3 = data.groupby("region")["sales_brand_3_market"].sum().reset_index()
+reg12 = data.groupby("region")["sales_brand_12_market"].sum().reset_index()
+
+reg3.columns = ["region", "sales_brand_3_market_per_region"]
+
+reg12.columns = ["region", "sales_brand_12_market_per_region"]
+
+data = pd.merge(data, reg3, on="region")
+data = pd.merge(data, reg12, on="region")
+
 data.to_csv("../data/features/brand_3_12_market_features_lagged.csv", index=False)
