@@ -113,8 +113,8 @@ def train_and_validate(alpha, X_train, y_train, X_val, df_feats):
         pipes[quantile] = Pipeline(
             [   
                 ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-                ("empty", IsEmptyExtractor(cols=["count", "count_other", "inverse_tier_other", "count_Pediatrician"])),
                 ("selector", ColumnSelector(columns=select_cols)),
+                ("empty", IsEmptyExtractor()),
                 ("imputer", SimpleImputer(strategy="median")), 
                 ("scale", StandardScaler()),
                 ("lgb", models[quantile])

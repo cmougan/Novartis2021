@@ -108,7 +108,7 @@ def train_and_validate(n_estimators, X_train, y_train, X_val, df_feats):
             [   
                 ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
                 ("selector", ColumnSelector(columns=select_cols)),
-                ("empty", IsEmptyExtractor(cols=["count", "count_other", "inverse_tier_other", "count_Pediatrician"])),
+                ("empty", IsEmptyExtractor()),
                 ("imputer", SimpleImputer(strategy="median")), 
                 ("lgb", models[quantile])
             ]
