@@ -20,11 +20,14 @@ df_region = pd.read_csv("../data/data_raw/regions.csv")
 regions_hcps = pd.read_csv("../data/data_raw/regions_hcps.csv")
 activity_features = pd.read_csv("../data/features/activity_features.csv")
 brands_3_12 = pd.read_csv("../data/features/brand_3_12_market_features_lagged.csv")
+rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
+    columns=["sales", "validation"]
+)
 
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "lightgbm_brand_lags"
+SUBMISSION_NAME = "lightgbm_brand_rte_basic"
 
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
@@ -32,8 +35,8 @@ df_feats = pd.merge(left=df_feats, right=regions_hcps, how="left", on="region")
 df_feats = df_feats.merge(
     activity_features, on=["month", "region", "brand"], how="left"
 )
+df_feats = df_feats.merge(rte_basic, on=["month", "region", "brand"], how="left")
 df_feats = df_feats.merge(brands_3_12, on=["month", "region"], how="left")
-
 df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 
 # drop sum variables
