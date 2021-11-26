@@ -36,7 +36,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "linear_model_simple"
+SUBMISSION_NAME = "linear_model_time_evol"
 RETRAIN = True
 
 # %% Training weights
@@ -114,6 +114,9 @@ Xs_val = {}
 ys_val = {}
 Xs_test = {}
 ys_test = {}
+Xs_full = {}
+ys_full = {}
+
 models = {}
 pipes = {}
 train_preds = {}
@@ -128,12 +131,15 @@ for i, month in enumerate(list(months)):
     ys_val[month] = y_val.copy()[X_val.month == month]
     Xs_test[month] = X_test.copy()[X_test.month == month]
     ys_test[month] = y_test.copy()[X_test.month == month]
+    Xs_full[month] = X_full.copy()[X_full.month == month]
+    ys_full[month] = y_full.copy()[X_full.month == month]
     models[month] = {}
     pipes[month] = {}
     train_preds[month] = {}
     val_preds[month] = {}
     test_preds[month] = {}
 
+    print("Month: ", month)
     for quantile in [0.5, 0.1, 0.9]:
 
         models[month][quantile] = QuantileRegressor(
@@ -152,15 +158,28 @@ for i, month in enumerate(list(months)):
             ]
         )
 
+        # Previous month predictions
+        for i_month in range(i):
+            previous_month = months[i_month]
+            for q in [0.5, 0.1, 0.9]:
+                Xs[month][f"{previous_month}_pred_{q}"] = \
+                    pipes[previous_month][quantile].predict(Xs[previous_month])
+                Xs_val[month][f"{previous_month}_pred_{q}"] = \
+                    pipes[previous_month][quantile].predict(Xs_val[previous_month])
+                Xs_test[month][f"{previous_month}_pred_{q}"] = \
+                    pipes[previous_month][quantile].predict(Xs_test[previous_month])
+                Xs_full[month][f"{previous_month}_pred_{q}"] = \
+                    pipes[previous_month][quantile].predict(Xs_full[previous_month])
+
+
         # Fit cv model
         pipes[month][quantile].fit(Xs[month], ys[month])
-        # , qr__sample_weight=weights_train)
 
         train_preds[month][quantile] = pipes[month][quantile].predict(Xs[month])
         val_preds[month][quantile] = pipes[month][quantile].predict(Xs_val[month])
 
         # if RETRAIN:
-        #     pipes[quantile].fit(X_full, y_full)
+        #     pipes[month][quantile].fit(Xs_full[month], y_full[month])
             # , qr__sample_weight=weights_full)
         test_preds[month][quantile] = pipes[month][quantile].predict(Xs_test[month])
 
@@ -228,14 +247,6 @@ val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}_val.csv", index=False
 
 
 # %% Test prediction
-test_preds_df = (
-    df_feats.query("validation.isnull()", engine="python")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=test_preds_post[0.5])
-    .assign(lower=test_preds_post[0.1])
-    .assign(upper=test_preds_post[0.9])
-)
-
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
 
 
