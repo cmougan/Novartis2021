@@ -191,7 +191,7 @@ ground_truth_val = df_feats.query("validation == 1").loc[
 print(ComputeMetrics(val_preds_df, sales_train, ground_truth_val))
 
 # %%
-val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}.csv", index=False)
+val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}_val.csv", index=False)
 
 
 # %% Test prediction
