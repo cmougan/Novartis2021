@@ -5,7 +5,7 @@ data = pd.read_csv("../data/features/brand_3_12_market_features.csv")
 
 def grouped(data, col: str = "", shifter: int = 1):
     aux = data.groupby(["month", "region"])[col].sum().shift(1).reset_index()
-    title = col + "shift" + str(shifter
+    title = col + "shift" + str(shifter)
     aux.columns = ["month", "region", title]
 
     return pd.merge(data, aux, on=["month", "region"])
