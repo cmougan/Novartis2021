@@ -18,7 +18,7 @@ df_region = pd.read_csv("../data/data_raw/regions.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = 'beta'
+SUBMISSION_NAME = "beta"
 
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
@@ -73,5 +73,4 @@ test_preds = (
     .assign(upper=intervals_test[:, 1])
 )
 
-test_preds.to_csv(f'../submissions/{SUBMISSION_NAME}.csv', index=False)
-
+test_preds.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
