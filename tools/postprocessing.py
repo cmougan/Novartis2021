@@ -16,3 +16,27 @@ def postprocess_predictions(predictions):
     predictions[0.5] = m
     predictions[0.9] = u
     return predictions
+
+
+def postprocess_submissions(df):
+
+    df = df.copy()
+    for c in ['sales', 'lower', 'upper']:
+        df.loc[df[c] < 0, c] = 0
+        
+    bad_lower_index = df['sales'] < df['lower']
+    df.loc[bad_lower_index, 'lower'] = df.loc[bad_lower_index, 'sales'] - 0.01
+
+    bad_upper_index = df['sales'] > df['upper']
+    df.loc[bad_upper_index, 'upper'] = df.loc[bad_upper_index, 'sales'] + 0.01
+
+    return df
+
+
+def clip_first_month(df, month='2020-07', brand='brand_1'):
+    df = df.copy()
+    idx = (df['month'] == month) & (df['brand'] == brand)
+    df.loc[idx, 'sales'] = 0
+    df.loc[idx, 'lower'] = 0
+    df.loc[idx, 'upper'] = 0
+    return df

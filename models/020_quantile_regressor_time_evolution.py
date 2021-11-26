@@ -17,7 +17,11 @@ from sklearn.preprocessing import StandardScaler
 import random
 
 from eda.checker import check_train_test
-from tools.postprocessing import postprocess_predictions
+from tools.postprocessing import (
+    postprocess_predictions,
+    postprocess_submissions,
+    clip_first_month
+)
 
 random.seed(0)
 
@@ -223,10 +227,10 @@ for month, d in test_preds.items():
     for name, quantile in name_mapping.items():
         test_preds_df.loc[test_preds_df.month == month, name] = d[quantile]
 
-# %% TODO: postprocessing
-# train_preds_post = postprocess_predictions(train_preds)
-# val_preds_post = postprocess_predictions(val_preds)
-# test_preds_post = postprocess_predictions(test_preds)
+# %% Postprocessing
+train_preds_post = clip_first_month(postprocess_submissions(train_preds_df))
+val_preds_post = clip_first_month(postprocess_submissions(val_preds_df))
+test_preds_post = clip_first_month(postprocess_submissions(test_preds_df))
 
 # %% Train prediction
 ground_truth_train = df_feats.query("validation == 0").loc[
