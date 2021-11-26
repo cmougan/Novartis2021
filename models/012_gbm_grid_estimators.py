@@ -10,10 +10,11 @@ from sklearn.impute import SimpleImputer
 from sktools import IsEmptyExtractor
 from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
-from sklearn.linear_model import QuantileRegressor
 from sklego.preprocessing import ColumnSelector 
 from sklearn.preprocessing import StandardScaler
 import random
+
+from memo import memlist, memfile, grid, time_taken, Runner
 
 from eda.checker import check_train_test
 
@@ -84,85 +85,79 @@ select_cols = [
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
 # %%
-models = {}
-pipes = {}
-train_preds = {}
-val_preds = {}
-test_preds = {}
+data = []
 
-for quantile in [0.5, 0.1, 0.9]:
+@memlist(data=data)
+def train_and_validate(n_estimators, X_train, y_train, X_val, df_feats):
 
-    print("Quantile:", quantile)
-    models[quantile] = QuantileRegressor(
-        quantile=quantile,
-        alpha=0,
-        solver="highs-ds"
+    models = {}
+    pipes = {}
+    train_preds = {}
+    val_preds = {}
+
+    for quantile in [0.5, 0.1, 0.9]:
+
+        models[quantile] = LGBMRegressor(
+            n_jobs=-1,
+            n_estimators=n_estimators,
+            objective="quantile",
+            alpha=quantile,
+        )
+
+        pipes[quantile] = Pipeline(
+            [   
+                ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
+                ("empty", IsEmptyExtractor(cols=["count", "count_other", "inverse_tier_other", "count_Pediatrician"])),
+                ("selector", ColumnSelector(columns=select_cols)),
+                ("imputer", SimpleImputer(strategy="median")), 
+                ("lgb", models[quantile])
+            ]
+        )
+
+        # Fit cv model
+        pipes[quantile].fit(X_train, y_train)
+
+        train_preds[quantile] = pipes[quantile].predict(X_train)
+        val_preds[quantile] = pipes[quantile].predict(X_val)
+
+    # %% Validation prediction
+    val_preds_df = (
+        df_feats.query("validation == 1")
+        .loc[:, ["month", "region", "brand"]]
+        .assign(sales=val_preds[0.5].clip(0))
+        .assign(lower=val_preds[0.1].clip(0))
+        .assign(upper=val_preds[0.9].clip(0))
     )
 
-    pipes[quantile] = Pipeline(
-        [   
-            ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-            ("empty", IsEmptyExtractor(cols=["count", "count_other", "inverse_tier_other", "count_Pediatrician"])),
-            ("selector", ColumnSelector(columns=select_cols)),
-            ("imputer", SimpleImputer(strategy="median")), 
-            ("scale", StandardScaler()),
-            ("lgb", models[quantile])
-        ]
-    )
-
-    # Fit cv model
-    pipes[quantile].fit(X_train, y_train)
-
-    train_preds[quantile] = pipes[quantile].predict(X_train)
-    val_preds[quantile] = pipes[quantile].predict(X_val)
-    test_preds[quantile] = pipes[quantile].predict(X_test)
-
-# %% Train prediction
-train_preds_df = (
-    df_feats.query("validation == 0")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=train_preds[0.5].clip(0))
-    .assign(lower=train_preds[0.1].clip(0))
-    .assign(upper=train_preds[0.9].clip(0))
-)
-
-ground_truth_train = df_feats.query("validation == 0").loc[
-    :, ["month", "region", "brand", "sales"]
-]
-
-print(ComputeMetrics(train_preds_df, sales_train, ground_truth_train))
-
-# %% Validation prediction
-val_preds_df = (
-    df_feats.query("validation == 1")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=val_preds[0.5].clip(0))
-    .assign(lower=val_preds[0.1].clip(0))
-    .assign(upper=val_preds[0.9].clip(0))
-)
-
-ground_truth_val = df_feats.query("validation == 1").loc[
-    :, ["month", "region", "brand", "sales"]
-]
-
-print(ComputeMetrics(val_preds_df, sales_train, ground_truth_val))
+    ground_truth_val = df_feats.query("validation == 1").loc[
+        :, ["month", "region", "brand", "sales"]
+    ]
+    metrics = ComputeMetrics(val_preds_df, sales_train, ground_truth_val)
+    return {"accuracy": metrics[0], "deviation": metrics[1]}
 
 # %%
-val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}.csv", index=False)
-
-
-# %% Test prediction
-test_preds_df = (
-    df_feats.query("validation.isnull()", engine="python")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=test_preds[0.5].clip(0))
-    .assign(lower=test_preds[0.1].clip(0))
-    .assign(upper=test_preds[0.9].clip(0))
+from functools import partial
+partial_train_and_validate = partial(
+    train_and_validate, 
+    X_train=X_train,
+    y_train=y_train,
+    X_val=X_val,
+    df_feats=df_feats
 )
 
-test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
+settings = grid(n_estimators=[5, 15, 25, 50, 100])
 
+# To Run in parallel
+runner = Runner()
+runner.run(
+    func=partial_train_and_validate,
+    settings=settings, 
+)
 
 # %%
+for elem in data:
+    print(elem['n_estimators'])
+    print(elem['accuracy'])
+    print(elem['deviation'])
 
 # %%

@@ -12,7 +12,7 @@ from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
 import random
 
-from checker import check_train_test
+from eda.checker import check_train_test
 
 random.seed(0)
 
@@ -98,9 +98,9 @@ for quantile in [0.5, 0.1, 0.9]:
 train_preds_df = (
     df_feats.query("validation == 0")
     .loc[:, ["month", "region", "brand"]]
-    .assign(sales=train_preds[0.5])
+    .assign(sales=train_preds[0.5].clip(0))
     .assign(lower=train_preds[0.1].clip(0))
-    .assign(upper=train_preds[0.9])
+    .assign(upper=train_preds[0.9].clip(0))
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -113,9 +113,9 @@ print(ComputeMetrics(train_preds_df, sales_train, ground_truth_train))
 val_preds_df = (
     df_feats.query("validation == 1")
     .loc[:, ["month", "region", "brand"]]
-    .assign(sales=val_preds[0.5])
+    .assign(sales=val_preds[0.5].clip(0))
     .assign(lower=val_preds[0.1].clip(0))
-    .assign(upper=val_preds[0.9])
+    .assign(upper=val_preds[0.9].clip(0))
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -132,9 +132,9 @@ val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}.csv", index=False)
 test_preds_df = (
     df_feats.query("validation.isnull()", engine="python")
     .loc[:, ["month", "region", "brand"]]
-    .assign(sales=test_preds[0.5])
+    .assign(sales=test_preds[0.5].clip(0))
     .assign(lower=test_preds[0.1].clip(0))
-    .assign(upper=test_preds[0.9])
+    .assign(upper=test_preds[0.9].clip(0))
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
@@ -142,4 +142,6 @@ test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
 
 # %%
 
+# %%
+pd.Series(test_preds[0.1].clip(0)).describe()
 # %%
