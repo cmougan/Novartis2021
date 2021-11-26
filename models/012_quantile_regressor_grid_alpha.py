@@ -33,11 +33,18 @@ rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
     columns=["sales", "validation"]
 )
 
+market_size = pd.read_csv("../data/market_size.csv")
+
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
 SUBMISSION_NAME = "linear_model_simple"
 
+# %% Training weights
+market_size = (
+    market_size
+    .assign(weight=lambda x: 1 / x['sales'])
+)
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
 df_feats = pd.merge(left=df_feats, right=regions_hcps, how="left", on="region")

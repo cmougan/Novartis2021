@@ -27,12 +27,25 @@ rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
     columns=["sales", "validation"]
 )
 
+market_size = pd.read_csv("../data/market_size.csv")
+
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
 SUBMISSION_NAME = "empty_extractor_target_encoder"
 RETRAIN = True
 
+# %% Training weights
+market_size = (
+    market_size
+    .assign(weight=lambda x: 100 / x['sales'])
+    .rename(columns={"sales": 'market_size'})
+)
+
+market_size
+
+# %%
+market_size.market_size.describe()
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
 df_feats = pd.merge(left=df_feats, right=regions_hcps, how="left", on="region")
@@ -43,14 +56,17 @@ df_feats = df_feats.merge(rte_basic, on=["month", "region", "brand"], how="left"
 df_feats = df_feats.merge(brands_3_12, on=["month", "region"], how="left")
 df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 
+df_feats = df_feats.merge(market_size, on='region', how="left")
+
 df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
 
 # drop sum variables
-cols_to_drop = ["region", "sales", "validation"]
+cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
 
 # %% Split train val test
 X_train = df_feats.query("validation == 0").drop(columns=cols_to_drop)
 y_train = df_feats.query("validation == 0").sales
+weights_train = df_feats.query("validation == 0").weight
 
 X_val = df_feats.query("validation == 1").drop(columns=cols_to_drop)
 y_val = df_feats.query("validation == 1").sales
@@ -59,6 +75,7 @@ X_full = df_feats.query("validation.notnull()", engine="python").drop(
     columns=cols_to_drop
 )
 y_full = df_feats.query("validation.notnull()", engine="python").sales
+weights_full = df_feats.query("validation.notnull()", engine="python").weight
 
 X_test = df_feats.query("validation.isnull()", engine="python").drop(
     columns=cols_to_drop
@@ -112,13 +129,13 @@ for quantile in [0.5, 0.1, 0.9]:
     )
 
     # Fit cv model
-    pipes[quantile].fit(X_train, y_train)
+    pipes[quantile].fit(X_train, y_train, lgb__sample_weight=weights_train)
 
     train_preds[quantile] = pipes[quantile].predict(X_train)
     val_preds[quantile] = pipes[quantile].predict(X_val)
 
     if RETRAIN:
-        pipes[quantile].fit(X_full, y_full)
+        pipes[quantile].fit(X_full, y_full, lgb__sample_weight=weights_full)
     test_preds[quantile] = pipes[quantile].predict(X_test)
 
 
