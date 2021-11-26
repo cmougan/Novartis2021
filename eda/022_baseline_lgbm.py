@@ -23,7 +23,7 @@ brands_3_12 = pd.read_csv('../data/features/brand_3_12_market_features_lagged.cs
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = 'first_lightgbm'
+SUBMISSION_NAME = 'lightgbm_brand_lags'
 
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
