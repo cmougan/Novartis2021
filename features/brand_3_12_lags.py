@@ -6,7 +6,7 @@ print(data.shape)
 
 
 def grouped(data, col: str = "", shifter: int = 1):
-    aux = data.groupby(["month", "region"])[col].sum().shift(1).reset_index()
+    aux = data.groupby(["month", "region"])[col].sum().shift(shifter).reset_index()
     title = col + "shift" + str(shifter)
     aux.columns = ["month", "region", title]
 
@@ -14,7 +14,7 @@ def grouped(data, col: str = "", shifter: int = 1):
 
 
 for col in ["sales_brand_3", "sales_brand_3_market", "sales_brand_12_market"]:
-    for i in range(1, 12):
+    for i in range(-12, 12):
         data = grouped(data, col=col, shifter=i)
 print(data.shape)
 reg3 = data.groupby("region")["sales_brand_3_market"].sum().reset_index()

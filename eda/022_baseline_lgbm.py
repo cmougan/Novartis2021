@@ -20,9 +20,7 @@ df_region = pd.read_csv("../data/data_raw/regions.csv")
 regions_hcps = pd.read_csv("../data/data_raw/regions_hcps.csv")
 activity_features = pd.read_csv("../data/features/activity_features.csv")
 brands_3_12 = pd.read_csv("../data/features/brand_3_12_market_features_lagged.csv")
-rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
-    columns=["sales", "validation"]
-)
+#rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(    columns=["sales", "validation"])
 
 # For reproducibility
 random.seed(0)
@@ -35,7 +33,7 @@ df_feats = pd.merge(left=df_feats, right=regions_hcps, how="left", on="region")
 df_feats = df_feats.merge(
     activity_features, on=["month", "region", "brand"], how="left"
 )
-df_feats = df_feats.merge(rte_basic, on=["month", "region", "brand"], how="left")
+#df_feats = df_feats.merge(rte_basic, on=["month", "region", "brand"], how="left")
 df_feats = df_feats.merge(brands_3_12, on=["month", "region"], how="left")
 df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 
@@ -54,6 +52,7 @@ X_test = df_feats.query("validation.isnull()", engine="python").drop(
     columns=cols_to_drop
 )
 y_test = df_feats.query("validation.isnull()", engine="python").sales
+
 
 check_train_test(X_train, X_val)
 check_train_test(X_train, X_test, threshold=0.3)
@@ -118,6 +117,7 @@ ground_truth_val = df_feats.query("validation == 1").loc[
 print(ComputeMetrics(val_preds_df, sales_train, ground_truth_val))
 
 # %%
+
 val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}.csv", index=False)
 
 
