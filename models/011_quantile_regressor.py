@@ -109,8 +109,8 @@ for quantile in [0.5, 0.1, 0.9]:
     pipes[quantile] = Pipeline(
         [   
             ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-            ("empty", IsEmptyExtractor(cols=["count", "count_other", "inverse_tier_other", "count_Pediatrician"])),
             ("selector", ColumnSelector(columns=select_cols)),
+            ("empty", IsEmptyExtractor()),
             ("imputer", SimpleImputer(strategy="median")), 
             ("scale", StandardScaler()),
             ("lgb", models[quantile])

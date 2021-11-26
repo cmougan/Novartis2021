@@ -7,6 +7,7 @@ sys.path.append("../")
 from metrics.metric_participants import ComputeMetrics
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
+from sklego.preprocessing import ColumnSelector
 from sktools import IsEmptyExtractor
 from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
@@ -69,6 +70,22 @@ check_train_test(X_train, X_test, threshold=0.3)
 check_train_test(X_val, X_test)
 
 # %%
+select_cols = [
+    'whichBrand',
+    'count',
+    'inverse_tier_f2f',
+    'hcp_distinct_Internal medicine / pneumology',
+    'sales_brand_3',
+    'sales_brand_3_market',
+    'sales_brand_12_market',
+    'month_brand',
+    'month',
+    'brand'
+]
+
+assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
+
+# %%
 lgbms = {}
 pipes = {}
 train_preds = {}
@@ -87,7 +104,8 @@ for quantile in [0.5, 0.1, 0.9]:
     pipes[quantile] = Pipeline(
         [   
             ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-            ("empty", IsEmptyExtractor(cols=["count", "count_other", "inverse_tier_other", "count_Pediatrician"])),
+            ("selector", ColumnSelector(columns=select_cols)),
+            ("empty", IsEmptyExtractor()),
             ("imputer", SimpleImputer(strategy="median")), 
             ("lgb", lgbms[quantile])
         ]
