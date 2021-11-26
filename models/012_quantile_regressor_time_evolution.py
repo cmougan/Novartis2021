@@ -110,6 +110,10 @@ months = X_train.month.sort_values().unique()
 
 Xs = {}
 ys = {}
+Xs_val = {}
+ys_val = {}
+Xs_test = {}
+ys_test = {}
 models = {}
 pipes = {}
 train_preds = {}
@@ -122,6 +126,8 @@ for i, month in enumerate(list(months)):
     ys[month] = y_train.copy()[X_train.month == month]
     Xs_val[month] = X_val.copy()[X_val.month == month]
     ys_val[month] = y_val.copy()[X_val.month == month]
+    Xs_test[month] = X_test.copy()[X_test.month == month]
+    ys_test[month] = y_test.copy()[X_test.month == month]
     models[month] = {}
     pipes[month] = {}
     train_preds[month] = {}
@@ -151,31 +157,59 @@ for i, month in enumerate(list(months)):
         # , qr__sample_weight=weights_train)
 
         train_preds[month][quantile] = pipes[month][quantile].predict(Xs[month])
-        val_preds[month][quantile] = pipes[month][quantile].predict(X_val)
+        val_preds[month][quantile] = pipes[month][quantile].predict(Xs_val[month])
 
         # if RETRAIN:
         #     pipes[quantile].fit(X_full, y_full)
             # , qr__sample_weight=weights_full)
-        # test_preds[month][quantile] = pipes[month][quantile].predict(X_test)
+        test_preds[month][quantile] = pipes[month][quantile].predict(Xs_test[month])
 
 # %% Postprocess
-pipes
 
+name_mapping = {"sales": 0.5, "lower": 0.1, "upper": 0.9}
 
-# %% Postprocess
-train_preds_post = postprocess_predictions(train_preds)
-val_preds_post = postprocess_predictions(val_preds)
-test_preds_post = postprocess_predictions(test_preds)
-
-# %% Train prediction
 train_preds_df = (
     df_feats.query("validation == 0")
     .loc[:, ["month", "region", "brand"]]
-    .assign(sales=train_preds_post[0.5])
-    .assign(lower=train_preds_post[0.1])
-    .assign(upper=train_preds_post[0.9])
+    .assign(sales=0)
+    .assign(lower=0)
+    .assign(upper=0)
 )
 
+for month, d in train_preds.items():
+    for name, quantile in name_mapping.items():
+        train_preds_df.loc[train_preds_df.month == month, name] = d[quantile]
+
+val_preds_df = (
+    df_feats.query("validation == 1")
+    .loc[:, ["month", "region", "brand"]]
+    .assign(sales=0)
+    .assign(lower=0)
+    .assign(upper=0)
+)
+
+for month, d in val_preds.items():
+    for name, quantile in name_mapping.items():
+        val_preds_df.loc[val_preds_df.month == month, name] = d[quantile]
+
+test_preds_df = (
+    df_feats.query("validation.isnull()", engine="python")
+    .loc[:, ["month", "region", "brand"]]
+    .assign(sales=0)
+    .assign(lower=0)
+    .assign(upper=0)
+)
+
+for month, d in test_preds.items():
+    for name, quantile in name_mapping.items():
+        test_preds_df.loc[test_preds_df.month == month, name] = d[quantile]
+
+# %% TODO: postprocessing
+# train_preds_post = postprocess_predictions(train_preds)
+# val_preds_post = postprocess_predictions(val_preds)
+# test_preds_post = postprocess_predictions(test_preds)
+
+# %% Train prediction
 ground_truth_train = df_feats.query("validation == 0").loc[
     :, ["month", "region", "brand", "sales"]
 ]
@@ -183,14 +217,6 @@ ground_truth_train = df_feats.query("validation == 0").loc[
 print(ComputeMetrics(train_preds_df, sales_train, ground_truth_train))
 
 # %% Validation prediction
-val_preds_df = (
-    df_feats.query("validation == 1")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=val_preds_post[0.5])
-    .assign(lower=val_preds_post[0.1])
-    .assign(upper=val_preds_post[0.9])
-)
-
 ground_truth_val = df_feats.query("validation == 1").loc[
     :, ["month", "region", "brand", "sales"]
 ]
