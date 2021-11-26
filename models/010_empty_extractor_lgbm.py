@@ -132,8 +132,7 @@ for quantile in [0.5, 0.1, 0.9]:
         [   
             ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
             ("selector", ColumnSelector(columns=select_cols)),
-            ("empty", IsEmptyExtractor()),
-            ("imputer", SimpleImputer(strategy="median")), 
+            ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
             ("lgb", lgbms[quantile])
         ]
     )
