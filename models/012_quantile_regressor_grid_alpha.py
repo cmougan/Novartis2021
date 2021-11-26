@@ -2,9 +2,10 @@
 import pandas as pd
 import sys
 import numpy as np
+import random
 
-sys.path.append("../")
-from metrics.metric_participants import ComputeMetrics
+
+from functools import partial
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sktools import IsEmptyExtractor
@@ -13,8 +14,11 @@ from category_encoders import TargetEncoder
 from sklearn.linear_model import QuantileRegressor
 from sklego.preprocessing import ColumnSelector 
 from sklearn.preprocessing import StandardScaler
-import random
+from memo import memlist, memfile, grid, time_taken, Runner
 
+sys.path.append("../")
+
+from metrics.metric_participants import ComputeMetrics
 from eda.checker import check_train_test
 
 random.seed(0)
@@ -29,12 +33,18 @@ rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
     columns=["sales", "validation"]
 )
 
+market_size = pd.read_csv("../data/market_size.csv")
+
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
 SUBMISSION_NAME = "linear_model_simple"
-RETRAIN = True
 
+# %% Training weights
+market_size = (
+    market_size
+    .assign(weight=lambda x: 1 / x['sales'])
+)
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
 df_feats = pd.merge(left=df_feats, right=regions_hcps, how="left", on="region")
@@ -56,12 +66,6 @@ y_train = df_feats.query("validation == 0").sales
 
 X_val = df_feats.query("validation == 1").drop(columns=cols_to_drop)
 y_val = df_feats.query("validation == 1").sales
-
-X_full = df_feats.query("validation.notnull()", engine="python").drop(
-    columns=cols_to_drop
-)
-y_full = df_feats.query("validation.notnull()", engine="python").sales
-
 
 X_test = df_feats.query("validation.isnull()", engine="python").drop(
     columns=cols_to_drop
@@ -87,30 +91,108 @@ select_cols = [
     'month',
     'brand'
 ]
+# select_cols = [
+#     'Internal medicine and general practicioner', 'Pediatrician', 'count', 'null_tiers', 'null_tiers_phone', 'inverse_tier_f2f', 'hcp_distinct_Internal medicine / pneumology', 'sales_brand_3', 'sales_brand_12_market', 'month_brand',
+# ]
 
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
 # %%
+data = []
+
+
+@memlist(data=data)
+def train_and_validate(alpha, X_train, y_train, X_val, df_feats):
+
+    models = {}
+    pipes = {}
+    train_preds = {}
+    val_preds = {}
+
+    for quantile in [0.5, 0.1, 0.9]:
+
+        models[quantile] = QuantileRegressor(
+            quantile=quantile,
+            alpha=alpha,
+            solver="highs-ds"
+        )
+
+        pipes[quantile] = Pipeline(
+            [   
+                ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
+                ("selector", ColumnSelector(columns=select_cols)),
+                ("empty", IsEmptyExtractor()),
+                ("imputer", SimpleImputer(strategy="median")), 
+                ("scale", StandardScaler()),
+                ("lgb", models[quantile])
+            ]
+        )
+
+        # Fit cv model
+        pipes[quantile].fit(X_train, y_train)
+
+        train_preds[quantile] = pipes[quantile].predict(X_train)
+        val_preds[quantile] = pipes[quantile].predict(X_val)
+
+    # %% Validation prediction
+    val_preds_df = (
+        df_feats.query("validation == 1")
+        .loc[:, ["month", "region", "brand"]]
+        .assign(sales=val_preds[0.5].clip(0))
+        .assign(lower=val_preds[0.1].clip(0))
+        .assign(upper=val_preds[0.9].clip(0))
+    )
+
+    ground_truth_val = df_feats.query("validation == 1").loc[
+        :, ["month", "region", "brand", "sales"]
+    ]
+    metrics = ComputeMetrics(val_preds_df, sales_train, ground_truth_val)
+    return {"accuracy": metrics[0], "deviation": metrics[1]}
+
+# %%
+partial_train_and_validate = partial(
+    train_and_validate, 
+    X_train=X_train,
+    y_train=y_train,
+    X_val=X_val,
+    df_feats=df_feats
+)
+
+settings = grid(alpha=[0, 0.0005, 0.001, 0.005])
+
+# To Run in parallel
+runner = Runner()
+runner.run(
+    func=partial_train_and_validate,
+    settings=settings, 
+)
+
+# %%
+for elem in data:
+    print(elem['alpha'])
+    print(elem['accuracy'])
+    print(elem['deviation'])
+# %%
+
+
 models = {}
 pipes = {}
 train_preds = {}
 val_preds = {}
-test_preds = {}
 
-for quantile in [0.5, 0.1, 0.9]:
+for quantile in [0.5]:
 
-    print("Quantile:", quantile)
     models[quantile] = QuantileRegressor(
         quantile=quantile,
-        alpha=0,
+        alpha=0.05,
         solver="highs-ds"
     )
 
     pipes[quantile] = Pipeline(
         [   
             ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-            ("selector", ColumnSelector(columns=select_cols)),
-            ("empty", IsEmptyExtractor()),
+            ("empty", IsEmptyExtractor(cols=["count", "count_other", "inverse_tier_other", "count_Pediatrician"])),
+            # ("selector", ColumnSelector(columns=select_cols)),
             ("imputer", SimpleImputer(strategy="median")), 
             ("scale", StandardScaler()),
             ("lgb", models[quantile])
@@ -122,58 +204,18 @@ for quantile in [0.5, 0.1, 0.9]:
 
     train_preds[quantile] = pipes[quantile].predict(X_train)
     val_preds[quantile] = pipes[quantile].predict(X_val)
-    test_preds[quantile] = pipes[quantile].predict(X_test)
-
-    if RETRAIN:
-        pipes[quantile].fit(X_full, y_full)
-    test_preds[quantile] = pipes[quantile].predict(X_test)
-
-# %% Train prediction
-train_preds_df = (
-    df_feats.query("validation == 0")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=train_preds[0.5].clip(0))
-    .assign(lower=train_preds[0.1].clip(0))
-    .assign(upper=train_preds[0.9].clip(0))
-)
-
-ground_truth_train = df_feats.query("validation == 0").loc[
-    :, ["month", "region", "brand", "sales"]
-]
-
-print(ComputeMetrics(train_preds_df, sales_train, ground_truth_train))
-
-# %% Validation prediction
-val_preds_df = (
-    df_feats.query("validation == 1")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=val_preds[0.5].clip(0))
-    .assign(lower=val_preds[0.1].clip(0))
-    .assign(upper=val_preds[0.9].clip(0))
-)
-
-ground_truth_val = df_feats.query("validation == 1").loc[
-    :, ["month", "region", "brand", "sales"]
-]
-
-print(ComputeMetrics(val_preds_df, sales_train, ground_truth_val))
+# %%
+coefs = models[0.5].coef_
 
 # %%
-val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}.csv", index=False)
-
-
-# %% Test prediction
-test_preds_df = (
-    df_feats.query("validation.isnull()", engine="python")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=test_preds[0.5].clip(0))
-    .assign(lower=test_preds[0.1].clip(0))
-    .assign(upper=test_preds[0.9].clip(0))
-)
-
-test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
-
-
+cols_pipe = pipes[0.5][:2].fit_transform(X_train.head(), y_train.head()).columns
 # %%
-
+cols_pipe
+# %%
+coefs
+# %%
+# Join two lists into dictionary
+coefs_dict = dict(zip(cols_pipe, coefs))
+# %%
+{k: v for k, v in coefs_dict.items() if v != 0}.keys()
 # %%
