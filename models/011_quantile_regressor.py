@@ -31,6 +31,14 @@ rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
 )
 
 market_size = pd.read_csv("../data/market_size.csv")
+# variables alex
+test_correlation_features_for_test = pd.read_csv("../data/features/test_correlation_features_for_test.csv")
+train_correlation_features_for_test = pd.read_csv("../data/features/train_correlation_features_for_test.csv")
+test_group_features_for_test = pd.read_csv("../data/features/test_group_features_for_test.csv")
+train_group_features_for_test = pd.read_csv("../data/features/train_group_features_for_test.csv")
+# concat
+correlation_features_for_test = pd.concat([train_correlation_features_for_test, test_correlation_features_for_test])
+group_features_for_test = pd.concat([train_group_features_for_test, test_group_features_for_test]).drop(columns=['Unnamed: 0'])
 
 # For reproducibility
 random.seed(0)
@@ -60,6 +68,10 @@ df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 df_feats = df_feats.merge(market_size, on='region', how="left")
 
 df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
+
+# alex variables
+df_feats = df_feats.merge(group_features_for_test, on=["month", "region", "brand"], how="left")
+df_feats = df_feats.merge(correlation_features_for_test, on=["month", "region"], how="left")
 
 # drop sum variables
 cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
