@@ -109,7 +109,7 @@ train_preds = {}
 val_preds = {}
 test_preds = {}
 
-for quantile in [0.5, 0.1, 0.9]:
+for quantile in [0.5, 0.2, 0.8]:
 
     print("Quantile:", quantile)
     models[quantile] = QuantileRegressor(
@@ -150,23 +150,23 @@ train_preds_df = (
     df_feats.query("validation == 0")
     .loc[:, ["month", "region", "brand"]]
     .assign(sales=train_preds_post[0.5])
-    .assign(lower=train_preds_post[0.1])
-    .assign(upper=train_preds_post[0.9])
+    .assign(lower=train_preds_post[0.2])
+    .assign(upper=train_preds_post[0.8])
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
     :, ["month", "region", "brand", "sales"]
 ]
 
-print_metrics(train_preds_df, sales_train, ground_truth_train)
+#print_metrics(train_preds_df, sales_train, ground_truth_train)
 
 # %% Validation prediction
 val_preds_df = (
     df_feats.query("validation == 1")
     .loc[:, ["month", "region", "brand"]]
     .assign(sales=val_preds_post[0.5])
-    .assign(lower=val_preds_post[0.1])
-    .assign(upper=val_preds_post[0.9])
+    .assign(lower=val_preds_post[0.2])
+    .assign(upper=val_preds_post[0.8])
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -184,8 +184,8 @@ test_preds_df = (
     df_feats.query("validation.isnull()", engine="python")
     .loc[:, ["month", "region", "brand"]]
     .assign(sales=test_preds_post[0.5])
-    .assign(lower=test_preds_post[0.1])
-    .assign(upper=test_preds_post[0.9])
+    .assign(lower=test_preds_post[0.2])
+    .assign(upper=test_preds_post[0.8])
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)

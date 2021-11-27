@@ -20,6 +20,28 @@ def _confidence_error(df):
     outside = (2 / alpha) * (below + above)
     return width + outside
 
+def _confidence_error_width(df):
+    """
+    Returns dataframe with the confidence error calculated for each month, region, brand combination
+    df: input dataframe with actuals, predictions, lower and upper bounds
+    """
+
+    width = abs(df["upper"] - df["lower"])
+    below = (df["lower"] - df["actuals"]) * (df["lower"] > df["actuals"])
+    above = (df["actuals"] - df["upper"]) * (df["upper"] < df["actuals"])
+    outside = (2 / alpha) * (below + above)
+    return width
+def _confidence_error_outside(df):
+    """
+    Returns dataframe with the confidence error calculated for each month, region, brand combination
+    df: input dataframe with actuals, predictions, lower and upper bounds
+    """
+
+    width = abs(df["upper"] - df["lower"])
+    below = (df["lower"] - df["actuals"]) * (df["lower"] > df["actuals"])
+    above = (df["actuals"] - df["upper"]) * (df["upper"] < df["actuals"])
+    outside = (2 / alpha) * (below + above)
+    return outside
 
 def base_metric(df, market_size):
 
@@ -48,12 +70,19 @@ def interval_metric(df, market_size):
 
     # calculates \Delta_{r,t}^b
     df["confidence_error"] = df.apply(_confidence_error, axis=1)
+    df["outside_error"] = df.apply(_confidence_error_outside, axis=1)
+    df["width_error"] = df.apply(_confidence_error_width, axis=1)
+    df.to_csv('uncertainty_errors.csv')
 
     # calculates \Delta_r^b
     metric = df.groupby(["brand", "region"])["confidence_error"].mean()
+    metric_width = df.groupby(["brand", "region"])["width_error"].mean()
+    metric_outside = df.groupby(["brand", "region"])["outside_error"].mean()
 
     # calculates \Delta^b
     metric = (metric / market_size).groupby("brand").mean()
+    metric_width = (metric_width / market_size).groupby("brand").mean()
+    metric_outside = (metric_outside / market_size).groupby("brand").mean()
 
     return 10000 * metric.mean()
 
