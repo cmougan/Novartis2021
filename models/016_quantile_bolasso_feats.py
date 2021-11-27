@@ -110,18 +110,18 @@ check_train_test(X_train, X_val)
 check_train_test(X_train, X_test, threshold=0.3)
 check_train_test(X_val, X_test)
 # %%
-features_01 = pd.read_csv("../data/features/bolasso_features_01.csv")
-features_05 = pd.read_csv("../data/features/bolasso_features_05.csv")
-features_09 = pd.read_csv("../data/features/bolasso_features_09.csv")
+# features_01 = pd.read_csv("../data/features/bolasso_features_01.csv")
+# features_05 = pd.read_csv("../data/features/bolasso_features_05.csv")
+# features_09 = pd.read_csv("../data/features/bolasso_features_09.csv")
 
 # %%
-features_09.head(20)
+# features_09.head(20)
 # %%
-select_cols_d = {
-    0.1: list(features_01.feature.head(10)),
-    0.5: list(features_05.feature.head(10)),
-    0.9: list(features_09.feature.head(10)),
-}
+# select_cols_d = {
+#     0.1: list(features_01.feature.head(10)),
+#     0.5: list(features_05.feature.head(10)),
+#     0.9: list(features_09.feature.head(10)),
+# }
 
 original_cols = [
     'whichBrand',
