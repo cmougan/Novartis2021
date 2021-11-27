@@ -1,4 +1,4 @@
-
+import pandas as pd
 
 def postprocess_predictions(predictions):
     predictions = predictions.copy()
@@ -40,3 +40,23 @@ def clip_first_month(df, month='2020-07', brand='brand_1'):
     df.loc[idx, 'lower'] = 0
     df.loc[idx, 'upper'] = 0
     return df
+
+def crop_max(df_valid):
+    
+    df_valid = df_valid.copy()
+
+    maxes = (
+        pd.read_csv("../data/data_raw/sales_train.csv")
+        .query("brand.isin(['brand_1', 'brand_2'])", engine='python')
+        .groupby(["month", "brand"], as_index=False)
+        .agg({"sales": "max"})
+        .rename(columns={"sales": "max_sales"})
+    )
+
+    df_valid = df_valid.merge(maxes, on=["month", "brand"])
+    df_valid["sales"] = df_valid["sales"].clip(lower=0, upper=df_valid["max_sales"])
+    df_valid["upper"] = df_valid["upper"].clip(lower=0, upper=df_valid["max_sales"])
+
+    df_valid.drop(columns=["max_sales"])
+
+    return df_valid
