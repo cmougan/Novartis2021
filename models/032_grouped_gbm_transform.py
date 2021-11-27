@@ -4,7 +4,7 @@ import sys
 import numpy as np
 
 sys.path.append("../")
-from metrics.metric_participants import ComputeMetrics
+from metrics.metric_participants import (ComputeMetrics, print_metrics)
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
@@ -212,7 +212,7 @@ ground_truth_train = df_feats.query("validation == 0").loc[
     :, ["month", "region", "brand", "sales"]
 ]
 
-print(ComputeMetrics(train_preds_df, sales_train, ground_truth_train))
+print_metrics(train_preds_df, sales_train, ground_truth_train)
 
 # %% Validation prediction
 val_preds_df = (
@@ -227,7 +227,7 @@ ground_truth_val = df_feats.query("validation == 1").loc[
     :, ["month", "region", "brand", "sales"]
 ]
 
-print(ComputeMetrics(val_preds_df, sales_train, ground_truth_val))
+print_metrics(val_preds_df, sales_train, ground_truth_val)
 
 # %%
 val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}_val.csv", index=False)

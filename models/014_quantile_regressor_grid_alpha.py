@@ -19,7 +19,7 @@ from memo import memlist, memfile, grid, time_taken, Runner
 
 sys.path.append("../")
 
-from metrics.metric_participants import ComputeMetrics
+from metrics.metric_participants import (ComputeMetrics, print_metrics)
 from eda.checker import check_train_test
 
 random.seed(0)

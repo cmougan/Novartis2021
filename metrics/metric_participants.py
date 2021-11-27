@@ -92,3 +92,9 @@ def ComputeMetrics(
     market_size = market_size[ground_truth["region"].unique()]
 
     return base_metric(df, market_size), interval_metric(df, market_size)
+
+
+def print_metrics(solution: pd.DataFrame, sales_train: pd.DataFrame, ground_truth: pd.DataFrame):
+    metrics_tuple = ComputeMetrics(solution, sales_train, ground_truth)
+    print(f"Accuracy: {metrics_tuple[0]:.2f}, interval: {metrics_tuple[1]:.2f}")
+    return metrics_tuple

@@ -4,7 +4,7 @@ import sys
 import numpy as np
 
 sys.path.append("../")
-from metrics.metric_participants import ComputeMetrics
+from metrics.metric_participants import (ComputeMetrics, print_metrics)
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sktools import IsEmptyExtractor
