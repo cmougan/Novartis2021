@@ -37,3 +37,18 @@ p2 = alt.Chart(
 # %%
 p1 + p2
 # %%
+outside = pd.read_csv("../data/metric_outside.csv")
+width = pd.read_csv("../data/metric_width.csv")
+# %%
+errors = outside.merge(width, on=["region", "brand"]).assign(error=lambda x: x["outside"] + x["width"])
+# %%
+errors.sum()
+# %%
+errors.sort_values("error", ascending=False).head(10)
+# %%
+errors.sort_values("outside", ascending=False).head(10)
+
+# %%
+errors.sort_values("width", ascending=False).head(10)
+
+# %%
