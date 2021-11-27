@@ -17,7 +17,6 @@ import random
 
 from eda.checker import check_train_test
 from tools.postprocessing import postprocess_predictions
-
 random.seed(0)
 
 sales_train = pd.read_csv("../data/data_raw/sales_train.csv")
