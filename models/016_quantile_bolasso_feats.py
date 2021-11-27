@@ -38,6 +38,15 @@ random.seed(0)
 VAL_SIZE = 38
 SUBMISSION_NAME = "bolasso_features"
 RETRAIN = True
+TRANSFORM_COEF = 0.8
+COLS2TRANSFORM = ['sales', 'lower', 'upper']
+
+def inverse_transform(df):
+    df = df.copy()
+    for col in COLS2TRANSFORM:
+        df[col] = df[col] ** (1 / TRANSFORM_COEF)
+    return df
+
 
 # %% Training weights
 market_size = (
@@ -90,6 +99,12 @@ X_test = df_feats.query("validation.isnull()", engine="python").drop(
     columns=cols_to_drop
 )
 y_test = df_feats.query("validation.isnull()", engine="python").sales
+
+# Transform y
+y_train = y_train ** TRANSFORM_COEF
+y_test  = y_test ** TRANSFORM_COEF
+y_val   = y_val ** TRANSFORM_COEF
+y_full  = y_full ** TRANSFORM_COEF
 
 check_train_test(X_train, X_val)
 check_train_test(X_train, X_test, threshold=0.3)
@@ -189,6 +204,7 @@ train_preds_df = (
     .assign(lower=train_preds_post[0.1])
     .assign(upper=train_preds_post[0.9])
     .pipe(clip_first_month)
+    .pipe(inverse_transform)
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -205,6 +221,7 @@ val_preds_df = (
     .assign(lower=val_preds_post[0.1])
     .assign(upper=val_preds_post[0.9])
     .pipe(clip_first_month)
+    .pipe(inverse_transform)
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
