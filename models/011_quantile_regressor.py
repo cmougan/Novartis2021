@@ -38,7 +38,10 @@ test_group_features_for_test = pd.read_csv("../data/features/test_group_features
 train_group_features_for_test = pd.read_csv("../data/features/train_group_features_for_test.csv")
 # concat
 correlation_features_for_test = pd.concat([train_correlation_features_for_test, test_correlation_features_for_test])
-group_features_for_test = pd.concat([train_group_features_for_test, test_group_features_for_test]).drop(columns=['Unnamed: 0'])
+group_features_for_test = pd.concat([train_group_features_for_test, test_group_features_for_test]).drop(columns=['Unnamed: 0']).reset_index(drop=True)
+group_features_for_test = group_features_for_test[group_features_for_test.brand.isin(['brand_1','brand_2'])]
+correlations_features_for_test = correlations_features_for_test[group_features_for_test.brand.isin(['brand_1','brand_2'])]
+
 
 # For reproducibility
 random.seed(0)
@@ -72,6 +75,7 @@ df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
 # alex variables
 df_feats = df_feats.merge(group_features_for_test, on=["month", "region", "brand"], how="left")
 df_feats = df_feats.merge(correlation_features_for_test, on=["month", "region"], how="left")
+# df_feats["month", "region", "brand"].drop_duplicates()
 
 # drop sum variables
 cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
