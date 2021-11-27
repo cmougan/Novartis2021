@@ -16,7 +16,7 @@ from sklearn.preprocessing import StandardScaler
 import random
 
 from eda.checker import check_train_test
-from tools.postprocessing import postprocess_predictions
+from tools.postprocessing import clip_first_month, postprocess_predictions
 
 random.seed(0)
 
@@ -31,6 +31,24 @@ rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
 )
 
 market_size = pd.read_csv("../data/market_size.csv")
+#alex variables
+# test_group_features_for_validation = pd.read_csv("../data/features/test_group_features_for_validation.csv")
+# train_group_features_for_validation = pd.read_csv("../data/features/train_group_features_for_validation.csv")
+# group_features_for_validation = pd.concat([train_group_features_for_validation, test_group_features_for_validation])
+
+# test_correlation_features_for_validation = pd.read_csv("../data/features/test_correlation_features_for_validation.csv")
+# train_correlation_features_for_validation = pd.read_csv("../data/features/train_correlation_features_for_validation.csv")
+# correlation_features_for_validation = pd.concat([train_correlation_features_for_validation, test_correlation_features_for_validation])
+
+test_group_features_for_test = pd.read_csv("../data/features/test_group_features_for_test.csv")
+train_group_features_for_test = pd.read_csv("../data/features/train_group_features_for_test.csv")
+group_features_for_test = pd.concat([train_group_features_for_test, test_group_features_for_test])
+
+test_correlation_features_for_test = pd.read_csv("../data/features/test_correlation_features_for_test.csv")
+train_correlation_features_for_test = pd.read_csv("../data/features/train_correlation_features_for_test.csv")
+correlation_features_for_test = pd.concat([train_correlation_features_for_test, test_correlation_features_for_test])
+
+
 
 # For reproducibility
 random.seed(0)
@@ -60,6 +78,10 @@ df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 df_feats = df_feats.merge(market_size, on='region', how="left")
 
 df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
+
+#add alex variables
+df_feats = df_feats.merge(correlation_features_for_test, on=["month", "region"], how="left")
+df_feats = df_feats.merge(group_features_for_test, on=["month", "region", "brand"], how="left")
 
 # drop sum variables
 cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
@@ -97,7 +119,10 @@ select_cols = [
     'sales_brand_12_market',
     'month_brand',
     'month',
-    'brand'
+    'brand',
+    'pci16_mean_sales', 'pci18_mean_sales','population_mean_sales', 'Pediatrician_mean_sales'
+
+
 ]
 
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
@@ -140,6 +165,20 @@ for quantile in [0.5, 0.1, 0.9]:
         # , qr__sample_weight=weights_full)
     test_preds[quantile] = pipes[quantile].predict(X_test)
 
+    # explain the model's predictions using SHAP
+    # (same syntax works for LightGBM, CatBoost, scikit-learn, transformers, Spark, etc.)
+    # import shap
+    # explainer = shap.Explainer(pipes[0.5].named_steps["lgb"])
+    # shap_values = explainer(
+    #     pd.DataFrame(pipes[0.5][:-1].transform(X_train), columns=X_train.columns)
+    # )
+
+    # # visualize the first prediction's explanation
+    # shap.plots.waterfall(shap_values[0])
+
+    # shap.plots.bar(shap_values)
+
+
 # %% Postprocess
 train_preds_post = postprocess_predictions(train_preds)
 val_preds_post = postprocess_predictions(val_preds)
@@ -152,6 +191,7 @@ train_preds_df = (
     .assign(sales=train_preds_post[0.5])
     .assign(lower=train_preds_post[0.1])
     .assign(upper=train_preds_post[0.9])
+    .pipe(clip_first_month)
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -167,6 +207,7 @@ val_preds_df = (
     .assign(sales=val_preds_post[0.5])
     .assign(lower=val_preds_post[0.1])
     .assign(upper=val_preds_post[0.9])
+    .pipe(clip_first_month)
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -186,6 +227,7 @@ test_preds_df = (
     .assign(sales=test_preds_post[0.5])
     .assign(lower=test_preds_post[0.1])
     .assign(upper=test_preds_post[0.9])
+    .pipe(clip_first_month)
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
