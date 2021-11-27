@@ -8,7 +8,6 @@ sys.path.append("../")
 from metrics.metric_participants import ComputeMetrics
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from sktools import IsEmptyExtractor
 from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
 from sklearn.linear_model import QuantileRegressor
