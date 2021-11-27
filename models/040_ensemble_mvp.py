@@ -9,7 +9,7 @@ from memo import memlist, grid, Runner
 
 
 files = [
-    "empty_extractor_target_encoder",
+    # "empty_extractor_target_encoder",
     "gbm_time_evol",
     "linear_model_time_evol",
     "linear_model_simple",
@@ -33,11 +33,25 @@ for file in files:
 
 # %%
 
-def mix(d1, d2, weight):
+def mix(d1, d2, weight, mix_interval=True, mix_sales=True, sales_winner=1, interval_winner=1):
     d = d1.copy()
-    d['sales'] = d1['sales'] * weight + d2['sales'] * (1 - weight)
-    d['upper'] = d1['upper'] * weight + d2['upper'] * (1 - weight)
-    d['lower'] = d1['lower'] * weight + d2['lower'] * (1 - weight)
+    if mix_sales:
+        d['sales'] = d1['sales'] * weight + d2['sales'] * (1 - weight)
+    elif sales_winner == 1:
+        d['sales'] = d1['sales']
+    else:
+        d['sales'] = d2['sales']
+    
+    if mix_interval:
+        d['upper'] = d1['upper'] * weight + d2['upper'] * (1 - weight)
+        d['lower'] = d1['lower'] * weight + d2['lower'] * (1 - weight)
+    elif interval_winner == 1:
+        d['upper'] = d1['upper']
+        d['lower'] = d1['lower']
+    else:
+        d['upper'] = d2['upper']
+        d['lower'] = d2['lower']
+
     return d
 # %%
 
@@ -45,17 +59,23 @@ data = []
 
 
 @memlist(data=data)
-def mixing_output(weight):
+def mixing_output(weight, submission_1, submission_2, mix_interval=True, mix_sales=True, sales_winner=1, interval_winner=1):
     mixed = mix(
-        submissions['linear_model_simple']['val'], 
-        submissions['gbm_time_evol']['val'],
-        weight
+        submissions[submission_1]['val'], 
+        submissions[submission_2]['val'],
+        weight,
+        mix_interval=mix_interval,
+        mix_sales=mix_sales,
+        sales_winner=sales_winner,
+        interval_winner=interval_winner
     )
 
     metrics = ComputeMetrics(mixed, sales_train, ground_truth_val)
     return {"accuracy": metrics[0], "deviation": metrics[1]}
 # %%
-settings = grid(weight=[0, 0.1, 0.2, 0.5, 0.8, 1.0])
+
+# data = []
+settings = grid(weight=[0, 0.25, 0.5, 0.75, 1.0], submission_1=files, submission_2=files)
 
 runner = Runner()
 runner.run(
@@ -70,5 +90,7 @@ optimal_weight = float(df_results.head(1).weight)
 optimal_weight
 
 # %%
-df_results
+df_results.head(20)
 
+
+# %%
