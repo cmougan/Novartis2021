@@ -38,7 +38,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "linear_model_simple"
+SUBMISSION_NAME = "linear_model_feat_plus"
 RETRAIN = True
 
 # %% Training weights
