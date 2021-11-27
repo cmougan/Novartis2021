@@ -33,7 +33,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "empty_extractor_target_encoder"
+SUBMISSION_NAME = "add_market_estimation"
 RETRAIN = True
 
 # %% Training weights
@@ -58,6 +58,13 @@ df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 df_feats = df_feats.merge(market_size, on='region', how="left")
 
 df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
+
+df_feats['market_estimation'] = (
+    df_feats.sales_brand_12_market * df_feats.sales_brand_3
+) / df_feats.sales_brand_3_market
+
+df_feats.loc[df_feats.brand == 'brand_1', 'market_estimation'] = 0.75 * df_feats.loc[df_feats.brand == 'brand_1', 'market_estimation']
+df_feats.loc[df_feats.brand == 'brand_2', 'market_estimation'] = 0.25 * df_feats.loc[df_feats.brand == 'brand_2', 'market_estimation']
 
 # drop sum variables
 cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
@@ -108,7 +115,8 @@ select_cols = [
     "sales_brand_12_market",
     'no. openings_Pediatrician',
     'tier_openings_Internal medicine / pneumology',
-    'area_x'
+    'area_x',
+    'market_estimation'
 ]
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
