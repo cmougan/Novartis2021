@@ -15,7 +15,8 @@ files = [
     "linear_model_simple",
     "linear_model_grouped",
     "linear_model_feat_plus",
-    "NN"
+    "NN",
+    "sklearn_gbm"
     # "marc_magic_transforms_166",
     # "linear_winner_feat",
 ]
@@ -163,5 +164,40 @@ ensemble_submission_val.to_csv(f"../data/validation/{submission_name}_val.csv", 
 ensemble_submission.to_csv(f"../submissions/{submission_name}.csv", index=False)
 
 
+
+# %%
+dfs = {}
+for key in ['val', 'submission']:
+
+    mix_lms = mix(
+        submissions['linear_model_feat_plus'][key],
+        submissions['linear_model_time_evol'][key],
+        weight=0.5,
+        mix_interval=False,
+        mix_sales=False,
+        sales_winner=2,
+        interval_winner=1
+    )
+    mix_gbm = mix(
+        submissions['sklearn_gbm'][key],
+        submissions['gbm_time_evol'][key],
+        weight=0.5
+    )
+    full_mix = mix(
+        mix_gbm,
+        mix_lms,
+        # submissions['linear_model_feat_plus'][key],
+        weight=0.5
+    ).pipe(postprocess_submissions).pipe(crop_max)
+
+    dfs[key] = full_mix
+    if key == 'val':
+        full_mix.pipe(print_metrics, sales_train, ground_truth_val)
+
+
+# %%
+submission_name = "e_gbms_lm"
+dfs['val'].sort_values(['month', 'region', 'brand']).to_csv(f"../data/validation/{submission_name}_val.csv", index=False)
+dfs['submission'].sort_values(['month', 'region', 'brand']).to_csv(f"../submissions/{submission_name}.csv", index=False)
 
 # %%
