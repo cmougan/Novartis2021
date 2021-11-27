@@ -8,8 +8,6 @@ sys.path.append("../")
 from metrics.metric_participants import (ComputeMetrics, print_metrics)
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from sktools import IsEmptyExtractor
-from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
 from sklearn.linear_model import QuantileRegressor
 from sklego.preprocessing import ColumnSelector 
@@ -36,17 +34,8 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "bolasso_features"
+SUBMISSION_NAME = "linear_winner_feat"
 RETRAIN = True
-TRANSFORM_COEF = 0.8
-COLS2TRANSFORM = ['sales', 'lower', 'upper']
-
-def inverse_transform(df):
-    df = df.copy()
-    for col in COLS2TRANSFORM:
-        df[col] = df[col] ** (1 / TRANSFORM_COEF)
-    return df
-
 
 # %% Training weights
 market_size = (
@@ -54,8 +43,6 @@ market_size = (
     .assign(weight=lambda x: 100 / x['sales'])
     .rename(columns={"sales": 'market_size'})
 )
-
-market_size
 
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
@@ -100,28 +87,10 @@ X_test = df_feats.query("validation.isnull()", engine="python").drop(
 )
 y_test = df_feats.query("validation.isnull()", engine="python").sales
 
-# Transform y
-y_train = y_train ** TRANSFORM_COEF
-y_test  = y_test ** TRANSFORM_COEF
-y_val   = y_val ** TRANSFORM_COEF
-y_full  = y_full ** TRANSFORM_COEF
-
 check_train_test(X_train, X_val)
 check_train_test(X_train, X_test, threshold=0.3)
 check_train_test(X_val, X_test)
 # %%
-# features_01 = pd.read_csv("../data/features/bolasso_features_01.csv")
-# features_05 = pd.read_csv("../data/features/bolasso_features_05.csv")
-# features_09 = pd.read_csv("../data/features/bolasso_features_09.csv")
-
-# %%
-# features_09.head(20)
-# %%
-# select_cols_d = {
-#     0.1: list(features_01.feature.head(10)),
-#     0.5: list(features_05.feature.head(10)),
-#     0.9: list(features_09.feature.head(10)),
-# }
 
 original_cols = [
     'whichBrand',
@@ -134,25 +103,16 @@ original_cols = [
     'month_brand',
     'month',
     'brand',
-    'market_estimation'
 ]
 select_cols = list(
     set(
-        # select_cols_d[0.1] + \
-        # select_cols_d[0.5] + \
-        # select_cols_d[0.9] + \
-        ["Pediatrician"] + \
+        ["Pediatrician", "market_estimation"] + \
         original_cols
     )
 )
 
-
-select_cols = [col for col in select_cols if 'shift' not in col]
+assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 select_cols
-    
-# %%
-intersect_cols = set(select_cols).difference(original_cols)
-intersect_cols
 # %%
 models = {}
 pipes = {}
@@ -204,7 +164,7 @@ train_preds_df = (
     .assign(lower=train_preds_post[0.1])
     .assign(upper=train_preds_post[0.9])
     .pipe(clip_first_month)
-    .pipe(inverse_transform)
+    # .pipe(inverse_transform)
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -221,7 +181,7 @@ val_preds_df = (
     .assign(lower=val_preds_post[0.1])
     .assign(upper=val_preds_post[0.9])
     .pipe(clip_first_month)
-    .pipe(inverse_transform)
+    # .pipe(inverse_transform)
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -242,10 +202,8 @@ test_preds_df = (
     .assign(lower=test_preds_post[0.1])
     .assign(upper=test_preds_post[0.9])
     .pipe(clip_first_month)
+    # .pipe(inverse_transform)
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
-
-
-# %%
 
