@@ -16,7 +16,8 @@ files = [
     "linear_model_grouped",
     "linear_model_feat_plus",
     "NN",
-    "sklearn_gbm"
+    "sklearn_gbm",
+    "skgbm_time_evol"
     # "marc_magic_transforms_166",
     # "linear_winner_feat",
 ]
@@ -142,7 +143,10 @@ runner.run(
 df_results = pd.DataFrame.from_records(data).sort_values(by=['deviation'])
 
 # %%
-df_results.head(20)
+df_results.groupby(['accuracy', 'deviation'], as_index=False).first().sort_values(by=['deviation']).head(20)
+
+# %%
+df_results.groupby(['accuracy', 'deviation'], as_index=False).first().sort_values(by=['accuracy']).head(20)
 
 
 # %%
@@ -197,6 +201,47 @@ for key in ['val', 'submission']:
 
 # %%
 submission_name = "e_gbms_lm"
+dfs['val'].sort_values(['month', 'region', 'brand']).to_csv(f"../data/validation/{submission_name}_val.csv", index=False)
+dfs['submission'].sort_values(['month', 'region', 'brand']).to_csv(f"../submissions/{submission_name}.csv", index=False)
+
+# %%
+dfs = {}
+for key in ['val', 'submission']:
+
+    mix_lms = mix(
+        submissions['linear_model_feat_plus'][key],
+        submissions['linear_model_time_evol'][key],
+        weight=0.5,
+        mix_interval=False,
+        mix_sales=False,
+        sales_winner=2,
+        interval_winner=1
+    )
+    mix_gbm_raw = mix(
+        submissions['sklearn_gbm'][key],
+        submissions['gbm_time_evol'][key],
+        weight=0.5
+    )
+
+    mix_gbm = mix(
+        submissions['skgbm_time_evol'][key],
+        mix_gbm_raw,
+        weight=0.5
+    )
+    full_mix = mix(
+        mix_gbm,
+        mix_lms,
+        # submissions['linear_model_feat_plus'][key],
+        weight=0.5
+    ).pipe(postprocess_submissions).pipe(crop_max)
+
+    dfs[key] = full_mix
+    if key == 'val':
+        full_mix.pipe(print_metrics, sales_train, ground_truth_val)
+
+
+# %%
+submission_name = "e_time_gbms_lm"
 dfs['val'].sort_values(['month', 'region', 'brand']).to_csv(f"../data/validation/{submission_name}_val.csv", index=False)
 dfs['submission'].sort_values(['month', 'region', 'brand']).to_csv(f"../submissions/{submission_name}.csv", index=False)
 
