@@ -4,19 +4,23 @@ import sys
 import numpy as np
 
 sys.path.append("../")
-from metrics.metric_participants import (ComputeMetrics, print_metrics)
+from metrics.metric_participants import ComputeMetrics, print_metrics
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sktools import IsEmptyExtractor
 from lightgbm import LGBMRegressor
+from category_encoders import OneHotEncoder
+from sktools import QuantileEncoder
 from category_encoders import TargetEncoder
 from sklearn.linear_model import QuantileRegressor
-from sklego.preprocessing import ColumnSelector 
+from sklego.preprocessing import ColumnSelector
 from sklearn.preprocessing import StandardScaler
 import random
+from tools.postprocessing import clip_first_month
 
 from eda.checker import check_train_test
 from tools.postprocessing import postprocess_predictions
+
 random.seed(0)
 
 sales_train = pd.read_csv("../data/data_raw/sales_train.csv")
@@ -38,10 +42,8 @@ SUBMISSION_NAME = "linear_model_simple"
 RETRAIN = True
 
 # %% Training weights
-market_size = (
-    market_size
-    .assign(weight=lambda x: 100 / x['sales'])
-    .rename(columns={"sales": 'market_size'})
+market_size = market_size.assign(weight=lambda x: 100 / x["sales"]).rename(
+    columns={"sales": "market_size"}
 )
 
 market_size
@@ -56,9 +58,9 @@ df_feats = df_feats.merge(rte_basic, on=["month", "region", "brand"], how="left"
 df_feats = df_feats.merge(brands_3_12, on=["month", "region"], how="left")
 df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 
-df_feats = df_feats.merge(market_size, on='region', how="left")
+df_feats = df_feats.merge(market_size, on="region", how="left")
 
-df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
+df_feats["month_brand"] = df_feats.month + "_" + df_feats.brand
 
 # drop sum variables
 cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
@@ -86,21 +88,86 @@ check_train_test(X_train, X_val)
 check_train_test(X_train, X_test, threshold=0.3)
 check_train_test(X_val, X_test)
 # %%
-select_cols = [
-    'whichBrand',
-    'count',
-    'inverse_tier_f2f',
-    'hcp_distinct_Internal medicine / pneumology',
-    'sales_brand_3',
-    'sales_brand_3_market',
-    'sales_brand_12_market',
-    'month_brand',
-    'month',
-    'brand'
+feats = {}
+feats[0.5] = [
+    "whichBrand",
+    "count",
+    "inverse_tier_f2f",
+    "hcp_distinct_Internal medicine / pneumology",
+    "sales_brand_3",
+    "sales_brand_3_market",
+    "sales_brand_12_market",
+    "month_brand",
+    "month_1",
+    "month_2",
+    "month_3",
+    "month_4",
+    "month_5",
+    "month_6",
+    "month_7",
+    "month_8",
+    "month_9",
+    "month_10",
+    "month_11",
+    "month_12",
+    "month_13",
+    "month_14",
+]
+feats[0.1] = [
+    "whichBrand",
+    "count",
+    "inverse_tier_f2f",
+    "hcp_distinct_Internal medicine / pneumology",
+    "sales_brand_3",
+    "sales_brand_3_market",
+    "sales_brand_12_market",
+    "month_brand",
+    "count_f2f",
+    "month_1",
+    "month_2",
+    "month_3",
+    "month_4",
+    "month_5",
+    "month_6",
+    "month_7",
+    "month_8",
+    "month_9",
+    "month_10",
+    "month_11",
+    "month_12",
+    "month_13",
+    "month_14",
+]
+feats[0.9] = [
+    "whichBrand",
+    "count",
+    "inverse_tier_f2f",
+    "hcp_distinct_Internal medicine / pneumology",
+    "tier_openings_Internal medicine / pneumology",
+    "sales_brand_3",
+    "sales_brand_3_market",
+    "sales_brand_12_market",
+    "month_brand",
+    "month_1",
+    "month_2",
+    "month_3",
+    "month_4",
+    "month_5",
+    "month_6",
+    "month_7",
+    "month_8",
+    "month_9",
+    "month_10",
+    "month_11",
+    "month_12",
+    "month_13",
+    "month_14",
 ]
 
-assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
-
+encoder = {}
+encoder[0.1] = QuantileEncoder(cols=["month_brand"], quantile=0.2)
+encoder[0.5] = TargetEncoder(cols=["month_brand"])
+encoder[0.9] = QuantileEncoder(cols=["month_brand"], quantile=0.8)
 # %%
 models = {}
 pipes = {}
@@ -111,19 +178,16 @@ test_preds = {}
 for quantile in [0.5, 0.1, 0.9]:
 
     print("Quantile:", quantile)
-    models[quantile] = QuantileRegressor(
-        quantile=quantile,
-        alpha=0,
-        solver="highs-ds"
-    )
+    models[quantile] = QuantileRegressor(quantile=quantile, alpha=0, solver="highs-ds")
 
     pipes[quantile] = Pipeline(
-        [   
-            ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-            ("selector", ColumnSelector(columns=select_cols)),
-            ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
+        [
+            ("ohe", OneHotEncoder(cols=["month"])),
+            ("te", encoder[quantile]),
+            ("selector", ColumnSelector(columns=feats[quantile])),
+            ("imputer", SimpleImputer(strategy="median", add_indicator=True)),
             ("scale", StandardScaler()),
-            ("qr", models[quantile])
+            ("qr", models[quantile]),
         ]
     )
 
@@ -151,6 +215,7 @@ train_preds_df = (
     .assign(sales=train_preds_post[0.5])
     .assign(lower=train_preds_post[0.1])
     .assign(upper=train_preds_post[0.9])
+    .assign(clip_first_month)
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -166,6 +231,7 @@ val_preds_df = (
     .assign(sales=val_preds_post[0.5])
     .assign(lower=val_preds_post[0.1])
     .assign(upper=val_preds_post[0.9])
+    .assign(clip_first_month)
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -185,10 +251,7 @@ test_preds_df = (
     .assign(sales=test_preds_post[0.5])
     .assign(lower=test_preds_post[0.1])
     .assign(upper=test_preds_post[0.9])
+    .assign(clip_first_month)
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
-
-
-# %%
-
