@@ -195,4 +195,9 @@ test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
 
 
 # %%
-
+# Coefficients
+coefs = pipes[0.5][-1].coef_
+keys = select_cols
+# %%
+dict(zip(keys, coefs))
+# %%
