@@ -134,7 +134,7 @@ original_cols = [
     'month_brand',
     'month',
     'brand',
-    # 'market_estimation'
+    'market_estimation'
 ]
 select_cols = list(
     set(
