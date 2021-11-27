@@ -6,16 +6,15 @@ import numpy as np
 sys.path.append("../")
 from metrics.metric_participants import ComputeMetrics
 from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklego.preprocessing import ColumnSelector
-from sklego.meta import GroupedPredictor, GroupedTransformer
-from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
+from sklego.meta import GroupedPredictor
+from sklearn.linear_model import QuantileRegressor
+from sklego.preprocessing import ColumnSelector 
 import random
 
 from eda.checker import check_train_test
 from tools.postprocessing import (postprocess_predictions, clip_first_month)
-from tools.impute import PandasSimpleImputer
+from tools.impute import PandasSimpleImputer, PandasStandardScaler
 
 random.seed(0)
 
@@ -34,7 +33,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "split_gbm_sklego"
+SUBMISSION_NAME = "linear_model_grouped"
 RETRAIN = True
 
 # %% Training weights
@@ -86,6 +85,8 @@ check_train_test(X_train, X_val)
 check_train_test(X_train, X_test, threshold=0.3)
 check_train_test(X_val, X_test)
 
+# # %%
+# list(X_train.columns)
 # %%
 select_cols = [
     'whichBrand',
@@ -97,41 +98,31 @@ select_cols = [
     'sales_brand_12_market',
     'month_brand',
     'month',
+    'brand'
 ]
+# other_cols = [
+#     'null_tiers',
+# ]
 
-
-select_cols = [
-    "month_brand",
-    "sales_brand_3",
-    "inverse_tier_f2f",
-    "hcp_distinct_Internal medicine / pneumology",
-    "sales_brand_12_market_per_region",
-    "sales_brand_12_market",
-    'no. openings_Pediatrician',
-    'tier_openings_Internal medicine / pneumology',
-    'area_x',
-    'whichBrand',
-]
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
 # %%
-lgbms = {}
+models = {}
 pipes = {}
-transforms = {}
 train_preds = {}
 val_preds = {}
 test_preds = {}
 
 for quantile in [0.5, 0.1, 0.9]:
 
-    lgbms[quantile] = GroupedPredictor(
-        LGBMRegressor(
-            n_jobs=-1,
-            n_estimators=50,
-            objective="quantile",
-            alpha=quantile,
+    print("Quantile:", quantile)
+    models[quantile] = GroupedPredictor(
+            QuantileRegressor(
+            quantile=quantile,
+            alpha=0,
+            solver="highs-ds"
         ),
-        groups="whichBrand",
+        groups='whichBrand'
     )
 
     pipes[quantile] = Pipeline(
@@ -139,31 +130,27 @@ for quantile in [0.5, 0.1, 0.9]:
             ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
             ("selector", ColumnSelector(columns=select_cols)),
             ("imputer", PandasSimpleImputer(strategy="median", add_indicator=True)), 
-            ("lgb", lgbms[quantile])
+            ("scale", PandasStandardScaler()),
+            ("qr", models[quantile])
         ]
     )
 
     # Fit cv model
     pipes[quantile].fit(X_train, y_train)
-    # , lgb__sample_weight=weights_train)
+    # , qr__sample_weight=weights_train)
 
     train_preds[quantile] = pipes[quantile].predict(X_train)
     val_preds[quantile] = pipes[quantile].predict(X_val)
 
-
     if RETRAIN:
         pipes[quantile].fit(X_full, y_full)
-        # , lgb__sample_weight=weights_full)
+        # , qr__sample_weight=weights_full)
     test_preds[quantile] = pipes[quantile].predict(X_test)
-
 
 # %% Postprocess
 train_preds_post = postprocess_predictions(train_preds)
 val_preds_post = postprocess_predictions(val_preds)
 test_preds_post = postprocess_predictions(test_preds)
-
-# %% Train prediction
-train_preds_post
 
 # %% Train prediction
 train_preds_df = (
@@ -172,6 +159,7 @@ train_preds_df = (
     .assign(sales=train_preds_post[0.5])
     .assign(lower=train_preds_post[0.1])
     .assign(upper=train_preds_post[0.9])
+    .pipe(clip_first_month)
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -187,6 +175,7 @@ val_preds_df = (
     .assign(sales=val_preds_post[0.5])
     .assign(lower=val_preds_post[0.1])
     .assign(upper=val_preds_post[0.9])
+    .pipe(clip_first_month)
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -206,6 +195,11 @@ test_preds_df = (
     .assign(sales=test_preds_post[0.5])
     .assign(lower=test_preds_post[0.1])
     .assign(upper=test_preds_post[0.9])
+    .pipe(clip_first_month)
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
+
+
+# %%
+
