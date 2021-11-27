@@ -36,3 +36,10 @@ p_lm <- valid_df_lm %>%
   ggtitle("LM")
 
 p_gbm | p_lm
+
+
+df %>%
+  filter(brand %in% c('brand_12_market', 'brand_3', 'brand_3_market')) %>% 
+  group_by(region, brand) %>% 
+  summarise(sales = sum(sales)) %>% 
+  arrange(desc(sales)) %>% View
