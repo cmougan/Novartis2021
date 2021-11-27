@@ -244,6 +244,7 @@ print_metrics(val_preds_df, sales_train, ground_truth_val)
 val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}_val.csv", index=False)
 
 
+
 # %% Test prediction
 test_preds_df = (
     df_feats.query("validation.isnull()", engine="python")
