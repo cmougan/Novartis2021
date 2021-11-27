@@ -11,6 +11,7 @@ from sklearn.impute import SimpleImputer
 from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
 from sklearn.linear_model import QuantileRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklego.preprocessing import ColumnSelector 
 from sklearn.preprocessing import StandardScaler
 import random
@@ -39,7 +40,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "gbm_time_evol"
+SUBMISSION_NAME = "skgbm_time_evol"
 RETRAIN = True
 
 # %% Training weights
@@ -64,6 +65,13 @@ df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 df_feats = df_feats.merge(market_size, on='region', how="left")
 
 df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
+
+df_feats['market_estimation'] = (
+    df_feats.sales_brand_12_market * df_feats.sales_brand_3
+) / df_feats.sales_brand_3_market
+
+df_feats.loc[df_feats.brand == 'brand_1', 'market_estimation'] = 0.75 * df_feats.loc[df_feats.brand == 'brand_1', 'market_estimation']
+df_feats.loc[df_feats.brand == 'brand_2', 'market_estimation'] = 0.25 * df_feats.loc[df_feats.brand == 'brand_2', 'market_estimation']
 
 # drop sum variables
 cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
@@ -101,7 +109,8 @@ select_cols = [
     'sales_brand_12_market',
     'month_brand',
     'month',
-    'brand'
+    'brand',
+    'market_estimation'
 ]
 
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
@@ -166,12 +175,11 @@ for i, month in enumerate(list(months)):
                 cols.append(f"{previous_month}_pred_{q}")  
 
 
-        models[month][quantile] = LGBMRegressor(
-            n_jobs=-1,
-            n_estimators=30,
-            objective="quantile",
+        models[month][quantile] = GradientBoostingRegressor(
+            n_estimators=100,
+            loss="quantile",
             alpha=quantile,
-        )
+    )
 
         pipes[month][quantile] = Pipeline(
             [   
@@ -262,4 +270,3 @@ test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
 
 
 # %%
-
