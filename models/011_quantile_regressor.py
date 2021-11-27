@@ -152,7 +152,7 @@ train_preds_df = (
     .assign(sales=train_preds_post[0.5])
     .assign(lower=train_preds_post[0.1])
     .assign(upper=train_preds_post[0.9])
-    .assign(clip_first_month)
+    .pipe(clip_first_month)
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -168,7 +168,7 @@ val_preds_df = (
     .assign(sales=val_preds_post[0.5])
     .assign(lower=val_preds_post[0.1])
     .assign(upper=val_preds_post[0.9])
-    .assign(clip_first_month)
+    .pipe(clip_first_month)
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -188,7 +188,7 @@ test_preds_df = (
     .assign(sales=test_preds_post[0.5])
     .assign(lower=test_preds_post[0.1])
     .assign(upper=test_preds_post[0.9])
-    .assign(clip_first_month)
+    .pipe(clip_first_month)
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
