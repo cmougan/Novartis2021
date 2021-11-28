@@ -38,7 +38,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "linear_model_feat_plus"
+SUBMISSION_NAME = "linear_model_feat_plus_magic"
 RETRAIN = True
 
 # %% Training weights
@@ -62,6 +62,17 @@ df_feats = df_feats.merge(market_size, on="region", how="left")
 
 df_feats["month_brand"] = df_feats.month + "_" + df_feats.brand
 
+
+df_feats["market_estimation"] = (
+    df_feats.sales_brand_12_market * df_feats.sales_brand_3
+) / df_feats.sales_brand_3_market
+
+df_feats.loc[df_feats.brand == "brand_1", "market_estimation"] = (
+    0.75 * df_feats.loc[df_feats.brand == "brand_1", "market_estimation"]
+)
+df_feats.loc[df_feats.brand == "brand_2", "market_estimation"] = (
+    0.25 * df_feats.loc[df_feats.brand == "brand_2", "market_estimation"]
+)
 # drop sum variables
 cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
 
@@ -112,6 +123,7 @@ feats[0.5] = [
     "month_12",
     "month_13",
     "month_14",
+    "market_estimation",
 ]
 feats[0.1] = [
     "whichBrand",
@@ -137,6 +149,7 @@ feats[0.1] = [
     "month_12",
     "month_13",
     "month_14",
+    "market_estimation",
 ]
 feats[0.9] = [
     "whichBrand",
@@ -162,6 +175,7 @@ feats[0.9] = [
     "month_12",
     "month_13",
     "month_14",
+    "market_estimation",
 ]
 
 encoder = {}
@@ -242,7 +256,6 @@ print_metrics(val_preds_df, sales_train, ground_truth_val)
 
 # %%
 val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}_val.csv", index=False)
-
 
 
 # %% Test prediction
