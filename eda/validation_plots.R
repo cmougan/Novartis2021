@@ -13,7 +13,7 @@ valid_df$month <- as.Date(paste(valid_df$month, "01", sep = '-'))
 valid_df_lm <- df %>% inner_join(val_lm, by=c("month", "region", "brand"))
 valid_df_lm$month <- as.Date(paste(valid_df_lm$month, "01", sep = '-'))
 
-reg <- "region_55"
+reg <- "region_6"
 
 p_gbm <- valid_df %>% 
   # filter(region == sample(valid_df$region %>% unique(), 1)) %>% 
@@ -43,3 +43,7 @@ df %>%
   group_by(region, brand) %>% 
   summarise(sales = sum(sales)) %>% 
   arrange(desc(sales)) %>% View
+
+
+
+valid_df
