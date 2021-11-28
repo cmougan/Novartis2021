@@ -161,6 +161,19 @@ ground_truth_train = df_feats.query("validation == 0").loc[
 
 print_metrics(train_preds_df, sales_train, ground_truth_train)
 
+# %% Train prediction
+train_preds_df = (
+    df_feats
+    .query("validation == 0")
+    .assign(sales=train_preds_post[0.5])
+    .assign(lower=train_preds_post[0.1])
+    .assign(upper=train_preds_post[0.9])
+    .pipe(clip_first_month)
+    .assign(target=y_train)
+    .to_csv('../eda/train_features.csv', index=False)
+)
+
+
 # %% Validation prediction
 val_preds_df = (
     df_feats.query("validation == 1")
