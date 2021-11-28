@@ -1,5 +1,6 @@
 # %% Imports
 import pandas as pd
+import re
 import sys
 import numpy as np
 
@@ -7,8 +8,6 @@ sys.path.append("../")
 from metrics.metric_participants import (ComputeMetrics, print_metrics)
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from sktools import IsEmptyExtractor
-from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
 from sklearn.linear_model import QuantileRegressor
 from sklego.preprocessing import ColumnSelector 
@@ -26,7 +25,7 @@ df_region = pd.read_csv("../data/data_raw/regions.csv")
 regions_hcps = pd.read_csv("../data/data_raw/regions_hcps.csv")
 activity_features = pd.read_csv("../data/features/activity_features.csv")
 brands_3_12 = pd.read_csv("../data/features/brand_3_12_market_features_lagged.csv")
-rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
+rte_basic = pd.read_csv("../data/features/rte_features_v2.csv").drop(
     columns=["sales", "validation"]
 )
 
@@ -35,7 +34,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "linear_model_simple"
+SUBMISSION_NAME = "linear_winner_feat"
 RETRAIN = True
 
 # %% Training weights
@@ -44,8 +43,6 @@ market_size = (
     .assign(weight=lambda x: 100 / x['sales'])
     .rename(columns={"sales": 'market_size'})
 )
-
-market_size
 
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
@@ -60,6 +57,13 @@ df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 df_feats = df_feats.merge(market_size, on='region', how="left")
 
 df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
+
+df_feats['market_estimation'] = (
+    df_feats.sales_brand_12_market * df_feats.sales_brand_3
+) / df_feats.sales_brand_3_market
+
+df_feats.loc[df_feats.brand == 'brand_1', 'market_estimation'] = 0.75 * df_feats.loc[df_feats.brand == 'brand_1', 'market_estimation']
+df_feats.loc[df_feats.brand == 'brand_2', 'market_estimation'] = 0.25 * df_feats.loc[df_feats.brand == 'brand_2', 'market_estimation']
 
 # drop sum variables
 cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
@@ -87,7 +91,8 @@ check_train_test(X_train, X_val)
 check_train_test(X_train, X_test, threshold=0.3)
 check_train_test(X_val, X_test)
 # %%
-select_cols = [
+
+original_cols = [
     'whichBrand',
     'count',
     'inverse_tier_f2f',
@@ -97,11 +102,17 @@ select_cols = [
     'sales_brand_12_market',
     'month_brand',
     'month',
-    'brand'
+    'brand',
 ]
+select_cols = list(
+    set(
+        ["Pediatrician", "market_estimation"] + \
+        original_cols
+    )
+)
 
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
-
+select_cols
 # %%
 models = {}
 pipes = {}
@@ -153,6 +164,7 @@ train_preds_df = (
     .assign(lower=train_preds_post[0.1])
     .assign(upper=train_preds_post[0.9])
     .pipe(clip_first_month)
+    # .pipe(inverse_transform)
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -160,19 +172,6 @@ ground_truth_train = df_feats.query("validation == 0").loc[
 ]
 
 print_metrics(train_preds_df, sales_train, ground_truth_train)
-
-# %% Train prediction
-train_preds_df = (
-    df_feats
-    .query("validation == 0")
-    .assign(sales=train_preds_post[0.5])
-    .assign(lower=train_preds_post[0.1])
-    .assign(upper=train_preds_post[0.9])
-    .pipe(clip_first_month)
-    .assign(target=y_train)
-    .to_csv('../eda/train_features.csv', index=False)
-)
-
 
 # %% Validation prediction
 val_preds_df = (
@@ -182,6 +181,7 @@ val_preds_df = (
     .assign(lower=val_preds_post[0.1])
     .assign(upper=val_preds_post[0.9])
     .pipe(clip_first_month)
+    # .pipe(inverse_transform)
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -202,15 +202,8 @@ test_preds_df = (
     .assign(lower=test_preds_post[0.1])
     .assign(upper=test_preds_post[0.9])
     .pipe(clip_first_month)
+    # .pipe(inverse_transform)
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
 
-
-# %%
-# Coefficients
-coefs = pipes[0.5][-1].coef_
-keys = select_cols
-# %%
-dict(zip(keys, coefs))
-# %%

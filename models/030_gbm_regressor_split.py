@@ -7,16 +7,15 @@ sys.path.append("../")
 from metrics.metric_participants import (ComputeMetrics, print_metrics)
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from sktools import IsEmptyExtractor
+from sklego.preprocessing import ColumnSelector
 from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
-from sklearn.linear_model import QuantileRegressor
-from sklego.preprocessing import ColumnSelector 
-from sklearn.preprocessing import StandardScaler
 import random
 
 from eda.checker import check_train_test
-from tools.postprocessing import clip_first_month, postprocess_predictions
+from tools.postprocessing import (
+    clip_first_month, postprocess_submissions
+)
 
 random.seed(0)
 
@@ -35,7 +34,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "linear_model_simple"
+SUBMISSION_NAME = "split_gbm"
 RETRAIN = True
 
 # %% Training weights
@@ -86,6 +85,7 @@ y_test = df_feats.query("validation.isnull()", engine="python").sales
 check_train_test(X_train, X_val)
 check_train_test(X_train, X_test, threshold=0.3)
 check_train_test(X_val, X_test)
+
 # %%
 select_cols = [
     'whichBrand',
@@ -97,92 +97,139 @@ select_cols = [
     'sales_brand_12_market',
     'month_brand',
     'month',
-    'brand'
 ]
 
+
+select_cols = [
+    "month_brand",
+    "sales_brand_3",
+    "inverse_tier_f2f",
+    "hcp_distinct_Internal medicine / pneumology",
+    "sales_brand_12_market_per_region",
+    "sales_brand_12_market",
+    'no. openings_Pediatrician',
+    'tier_openings_Internal medicine / pneumology',
+    'area_x'
+]
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
 # %%
-models = {}
+brands = X_train.brand.sort_values().unique()
+
+Xs = {}
+ys = {}
+Xs_val = {}
+ys_val = {}
+Xs_test = {}
+ys_test = {}
+Xs_full = {}
+ys_full = {}
+
+lgbms = {}
 pipes = {}
 train_preds = {}
 val_preds = {}
 test_preds = {}
 
-for quantile in [0.5, 0.1, 0.9]:
+for i, brand in enumerate(list(brands)):
+    
+    Xs[brand] = X_train.copy()[X_train.brand == brand]
+    ys[brand] = y_train.copy()[X_train.brand == brand]
+    Xs_val[brand] = X_val.copy()[X_val.brand == brand]
+    ys_val[brand] = y_val.copy()[X_val.brand == brand]
+    Xs_test[brand] = X_test.copy()[X_test.brand == brand]
+    ys_test[brand] = y_test.copy()[X_test.brand == brand]
+    Xs_full[brand] = X_full.copy()[X_full.brand == brand]
+    ys_full[brand] = y_full.copy()[X_full.brand == brand]
+    lgbms[brand] = {}
+    pipes[brand] = {}
+    train_preds[brand] = {}
+    val_preds[brand] = {}
+    test_preds[brand] = {}
 
-    print("Quantile:", quantile)
-    models[quantile] = QuantileRegressor(
-        quantile=quantile,
-        alpha=0,
-        solver="highs-ds"
-    )
+    for quantile in [0.5, 0.1, 0.9]:
 
-    pipes[quantile] = Pipeline(
-        [   
-            ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-            ("selector", ColumnSelector(columns=select_cols)),
-            ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
-            ("scale", StandardScaler()),
-            ("qr", models[quantile])
-        ]
-    )
+        lgbms[brand][quantile] = LGBMRegressor(
+            n_jobs=-1,
+            n_estimators=25,
+            objective="quantile",
+            alpha=quantile,
+        )
 
-    # Fit cv model
-    pipes[quantile].fit(X_train, y_train)
-    # , qr__sample_weight=weights_train)
+        pipes[brand][quantile] = Pipeline(
+            [   
+                ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
+                ("selector", ColumnSelector(columns=select_cols)),
+                ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
+                ("lgb", lgbms[brand][quantile])
+            ]
+        )
 
-    train_preds[quantile] = pipes[quantile].predict(X_train)
-    val_preds[quantile] = pipes[quantile].predict(X_val)
+        # Fit cv model
+        pipes[brand][quantile].fit(Xs[brand], ys[brand])
 
-    if RETRAIN:
-        pipes[quantile].fit(X_full, y_full)
-        # , qr__sample_weight=weights_full)
-    test_preds[quantile] = pipes[quantile].predict(X_test)
+        train_preds[brand][quantile] = pipes[brand][quantile].predict(Xs[brand])
+        val_preds[brand][quantile] = pipes[brand][quantile].predict(Xs_val[brand])
+
+        if RETRAIN:
+            pipes[brand][quantile].fit(Xs_full[brand], ys_full[brand])
+            # , qr__sample_weight=weights_full)
+        test_preds[brand][quantile] = pipes[brand][quantile].predict(Xs_test[brand])
+
 
 # %% Postprocess
-train_preds_post = postprocess_predictions(train_preds)
-val_preds_post = postprocess_predictions(val_preds)
-test_preds_post = postprocess_predictions(test_preds)
 
-# %% Train prediction
+name_mapping = {"sales": 0.5, "lower": 0.1, "upper": 0.9}
+
 train_preds_df = (
     df_feats.query("validation == 0")
     .loc[:, ["month", "region", "brand"]]
-    .assign(sales=train_preds_post[0.5])
-    .assign(lower=train_preds_post[0.1])
-    .assign(upper=train_preds_post[0.9])
-    .pipe(clip_first_month)
+    .assign(sales=0)
+    .assign(lower=0)
+    .assign(upper=0)
 )
 
+for brand, d in train_preds.items():
+    for name, quantile in name_mapping.items():
+        train_preds_df.loc[train_preds_df.brand == brand, name] = d[quantile]
+
+val_preds_df = (
+    df_feats.query("validation == 1")
+    .loc[:, ["month", "region", "brand"]]
+    .assign(sales=0)
+    .assign(lower=0)
+    .assign(upper=0)
+)
+
+for brand, d in val_preds.items():
+    for name, quantile in name_mapping.items():
+        val_preds_df.loc[val_preds_df.brand == brand, name] = d[quantile]
+
+test_preds_df = (
+    df_feats.query("validation.isnull()", engine="python")
+    .loc[:, ["month", "region", "brand"]]
+    .assign(sales=0)
+    .assign(lower=0)
+    .assign(upper=0)
+)
+
+for brand, d in test_preds.items():
+    for name, quantile in name_mapping.items():
+        test_preds_df.loc[test_preds_df.brand == brand, name] = d[quantile]
+
+
+# %% Postprocessing
+train_preds_post = clip_first_month(postprocess_submissions(train_preds_df))
+val_preds_post = clip_first_month(postprocess_submissions(val_preds_df))
+test_preds_post = clip_first_month(postprocess_submissions(test_preds_df))
+
+# %%
 ground_truth_train = df_feats.query("validation == 0").loc[
     :, ["month", "region", "brand", "sales"]
 ]
 
 print_metrics(train_preds_df, sales_train, ground_truth_train)
 
-# %% Train prediction
-train_preds_df = (
-    df_feats
-    .query("validation == 0")
-    .assign(sales=train_preds_post[0.5])
-    .assign(lower=train_preds_post[0.1])
-    .assign(upper=train_preds_post[0.9])
-    .pipe(clip_first_month)
-    .assign(target=y_train)
-    .to_csv('../eda/train_features.csv', index=False)
-)
-
-
-# %% Validation prediction
-val_preds_df = (
-    df_feats.query("validation == 1")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=val_preds_post[0.5])
-    .assign(lower=val_preds_post[0.1])
-    .assign(upper=val_preds_post[0.9])
-    .pipe(clip_first_month)
-)
 
 ground_truth_val = df_feats.query("validation == 1").loc[
     :, ["month", "region", "brand", "sales"]
@@ -201,16 +248,6 @@ test_preds_df = (
     .assign(sales=test_preds_post[0.5])
     .assign(lower=test_preds_post[0.1])
     .assign(upper=test_preds_post[0.9])
-    .pipe(clip_first_month)
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
-
-
-# %%
-# Coefficients
-coefs = pipes[0.5][-1].coef_
-keys = select_cols
-# %%
-dict(zip(keys, coefs))
-# %%

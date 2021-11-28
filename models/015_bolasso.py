@@ -1,21 +1,25 @@
 # %% Imports
+from numpy.lib import select
 import pandas as pd
 import sys
 import numpy as np
+import random
 
-sys.path.append("../")
-from metrics.metric_participants import ComputeMetrics
+
+from functools import partial
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sktools import IsEmptyExtractor
 from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
+from sklearn.linear_model import QuantileRegressor
 from sklego.preprocessing import ColumnSelector 
 from sklearn.preprocessing import StandardScaler
-import random
-
 from memo import memlist, memfile, grid, time_taken, Runner
 
+sys.path.append("../")
+
+from metrics.metric_participants import (ComputeMetrics, print_metrics)
 from eda.checker import check_train_test
 
 random.seed(0)
@@ -26,15 +30,22 @@ df_region = pd.read_csv("../data/data_raw/regions.csv")
 regions_hcps = pd.read_csv("../data/data_raw/regions_hcps.csv")
 activity_features = pd.read_csv("../data/features/activity_features.csv")
 brands_3_12 = pd.read_csv("../data/features/brand_3_12_market_features_lagged.csv")
-rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
+rte_basic = pd.read_csv("../data/features/rte_features_v2.csv").drop(
     columns=["sales", "validation"]
 )
+
+market_size = pd.read_csv("../data/market_size.csv")
 
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
 SUBMISSION_NAME = "linear_model_simple"
 
+# %% Training weights
+market_size = (
+    market_size
+    .assign(weight=lambda x: 1 / x['sales'])
+)
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
 df_feats = pd.merge(left=df_feats, right=regions_hcps, how="left", on="region")
@@ -67,97 +78,56 @@ check_train_test(X_train, X_test, threshold=0.3)
 check_train_test(X_val, X_test)
 
 # %%
-list(X_train.columns)
-# %%
-select_cols = [
-    'whichBrand',
-    'count',
-    'inverse_tier_f2f',
-    'hcp_distinct_Internal medicine / pneumology',
-    'sales_brand_3',
-    'sales_brand_3_market',
-    'sales_brand_12_market',
-    'month_brand',
-    'month',
-    'brand'
-]
+for quantile in [0.5, 0.1, 0.9]:
 
-assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
+    selected = {}
 
-# %%
-data = []
+    for iter in range(100):
 
-@memlist(data=data)
-def train_and_validate(n_estimators, X_train, y_train, X_val, df_feats):
+        print("Quantile: ", quantile, "iter: ", iter)
 
-    models = {}
-    pipes = {}
-    train_preds = {}
-    val_preds = {}
+        df_train = df_feats.query("validation == 0")
 
-    for quantile in [0.5, 0.1, 0.9]:
+        sample = df_train.sample(replace=True, frac=1)
 
-        models[quantile] = LGBMRegressor(
-            n_jobs=-1,
-            n_estimators=n_estimators,
-            objective="quantile",
-            alpha=quantile,
+        X_train = sample.drop(columns=cols_to_drop)
+        y_train = sample.sales
+
+        models = {}
+        pipes = {}
+        train_preds = {}
+        val_preds = {}
+
+
+        models[quantile] = QuantileRegressor(
+            quantile=quantile,
+            alpha=0.05,
+            solver="highs-ds"
         )
 
         pipes[quantile] = Pipeline(
             [   
                 ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-                ("selector", ColumnSelector(columns=select_cols)),
-                ("empty", IsEmptyExtractor()),
                 ("imputer", SimpleImputer(strategy="median")), 
+                ("scale", StandardScaler()),
                 ("lgb", models[quantile])
             ]
         )
 
         # Fit cv model
         pipes[quantile].fit(X_train, y_train)
-
         train_preds[quantile] = pipes[quantile].predict(X_train)
-        val_preds[quantile] = pipes[quantile].predict(X_val)
+            
+        coefs = models[quantile].coef_
+        cols_pipe = pipes[quantile][:1].fit_transform(X_train.head(), y_train.head()).columns
+        coefs_dict = dict(zip(cols_pipe, coefs))
+        selected_features = list({k: v for k, v in coefs_dict.items() if v != 0}.keys())
+        selected[iter] = selected_features
 
-    # %% Validation prediction
-    val_preds_df = (
-        df_feats.query("validation == 1")
-        .loc[:, ["month", "region", "brand"]]
-        .assign(sales=val_preds[0.5].clip(0))
-        .assign(lower=val_preds[0.1].clip(0))
-        .assign(upper=val_preds[0.9].clip(0))
-    )
+    all_selected = {}
+    for k, v in selected.items():
+        for feature in v:
+            all_selected[feature] = all_selected.get(feature, 0) + 1
 
-    ground_truth_val = df_feats.query("validation == 1").loc[
-        :, ["month", "region", "brand", "sales"]
-    ]
-    metrics = ComputeMetrics(val_preds_df, sales_train, ground_truth_val)
-    return {"accuracy": metrics[0], "deviation": metrics[1]}
-
-# %%
-from functools import partial
-partial_train_and_validate = partial(
-    train_and_validate, 
-    X_train=X_train,
-    y_train=y_train,
-    X_val=X_val,
-    df_feats=df_feats
-)
-
-settings = grid(n_estimators=[5, 15, 25, 50, 100])
-
-# To Run in parallel
-runner = Runner()
-runner.run(
-    func=partial_train_and_validate,
-    settings=settings, 
-)
-
-# %%
-for elem in data:
-    print(elem['n_estimators'])
-    print(elem['accuracy'])
-    print(elem['deviation'])
-
-# %%
+    all_selected_df = pd.DataFrame(all_selected.items(), columns=["feature", "count"]).sort_values("count", ascending=False)
+    all_selected_df.to_csv(f"../data/features/bolasso_features_0{int(quantile * 10)}.csv", index=False)

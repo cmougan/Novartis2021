@@ -7,16 +7,14 @@ sys.path.append("../")
 from metrics.metric_participants import (ComputeMetrics, print_metrics)
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from sktools import IsEmptyExtractor
+from sklego.preprocessing import ColumnSelector
+from sktools import IsEmptyExtractor, QuantileEncoder
 from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
-from sklearn.linear_model import QuantileRegressor
-from sklego.preprocessing import ColumnSelector 
-from sklearn.preprocessing import StandardScaler
 import random
 
 from eda.checker import check_train_test
-from tools.postprocessing import clip_first_month, postprocess_predictions
+from tools.postprocessing import postprocess_predictions
 
 random.seed(0)
 
@@ -26,7 +24,7 @@ df_region = pd.read_csv("../data/data_raw/regions.csv")
 regions_hcps = pd.read_csv("../data/data_raw/regions_hcps.csv")
 activity_features = pd.read_csv("../data/features/activity_features.csv")
 brands_3_12 = pd.read_csv("../data/features/brand_3_12_market_features_lagged.csv")
-rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
+rte_basic = pd.read_csv("../data/features/rte_features_v2.csv").drop(
     columns=["sales", "validation"]
 )
 
@@ -35,7 +33,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "linear_model_simple"
+SUBMISSION_NAME = "target_encoder_v2"
 RETRAIN = True
 
 # %% Training weights
@@ -60,6 +58,7 @@ df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 df_feats = df_feats.merge(market_size, on='region', how="left")
 
 df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
+df_feats['month_numeric'] = pd.to_datetime(df_feats['month']).dt.month
 
 # drop sum variables
 cols_to_drop = ["region", "sales", "validation", "market_size", "weight"]
@@ -83,9 +82,10 @@ X_test = df_feats.query("validation.isnull()", engine="python").drop(
 )
 y_test = df_feats.query("validation.isnull()", engine="python").sales
 
-check_train_test(X_train, X_val)
-check_train_test(X_train, X_test, threshold=0.3)
-check_train_test(X_val, X_test)
+# check_train_test(X_train, X_val)
+# check_train_test(X_train, X_test, threshold=0.3)
+# check_train_test(X_val, X_test)
+
 # %%
 select_cols = [
     'whichBrand',
@@ -97,13 +97,29 @@ select_cols = [
     'sales_brand_12_market',
     'month_brand',
     'month',
-    'brand'
 ]
 
+
+select_cols = [
+    "month_numeric",
+    "month_brand",
+    "sales_brand_3",
+    "inverse_tier_f2f",
+    "hcp_distinct_Internal medicine / pneumology",
+    "sales_brand_12_market_per_region",
+    "sales_brand_12_market",
+    'no. openings_Pediatrician',
+    'tier_openings_Internal medicine / pneumology',
+    'area_x',
+    'no. clicks',
+    'no. clicks_3m',
+    
+]
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
+
 # %%
-models = {}
+lgbms = {}
 pipes = {}
 train_preds = {}
 val_preds = {}
@@ -111,11 +127,12 @@ test_preds = {}
 
 for quantile in [0.5, 0.1, 0.9]:
 
-    print("Quantile:", quantile)
-    models[quantile] = QuantileRegressor(
-        quantile=quantile,
-        alpha=0,
-        solver="highs-ds"
+    lgbms[quantile] = LGBMRegressor(
+        n_jobs=-1,
+        n_estimators=25,
+        objective="quantile",
+        alpha=quantile,
+        # colsample_bytree=0.8,
     )
 
     pipes[quantile] = Pipeline(
@@ -123,22 +140,23 @@ for quantile in [0.5, 0.1, 0.9]:
             ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
             ("selector", ColumnSelector(columns=select_cols)),
             ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
-            ("scale", StandardScaler()),
-            ("qr", models[quantile])
+            ("lgb", lgbms[quantile])
         ]
     )
 
     # Fit cv model
     pipes[quantile].fit(X_train, y_train)
-    # , qr__sample_weight=weights_train)
+    # , lgb__sample_weight=weights_train)
 
     train_preds[quantile] = pipes[quantile].predict(X_train)
     val_preds[quantile] = pipes[quantile].predict(X_val)
 
+
     if RETRAIN:
         pipes[quantile].fit(X_full, y_full)
-        # , qr__sample_weight=weights_full)
+        # , lgb__sample_weight=weights_full)
     test_preds[quantile] = pipes[quantile].predict(X_test)
+
 
 # %% Postprocess
 train_preds_post = postprocess_predictions(train_preds)
@@ -152,7 +170,6 @@ train_preds_df = (
     .assign(sales=train_preds_post[0.5])
     .assign(lower=train_preds_post[0.1])
     .assign(upper=train_preds_post[0.9])
-    .pipe(clip_first_month)
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -161,19 +178,6 @@ ground_truth_train = df_feats.query("validation == 0").loc[
 
 print_metrics(train_preds_df, sales_train, ground_truth_train)
 
-# %% Train prediction
-train_preds_df = (
-    df_feats
-    .query("validation == 0")
-    .assign(sales=train_preds_post[0.5])
-    .assign(lower=train_preds_post[0.1])
-    .assign(upper=train_preds_post[0.9])
-    .pipe(clip_first_month)
-    .assign(target=y_train)
-    .to_csv('../eda/train_features.csv', index=False)
-)
-
-
 # %% Validation prediction
 val_preds_df = (
     df_feats.query("validation == 1")
@@ -181,7 +185,6 @@ val_preds_df = (
     .assign(sales=val_preds_post[0.5])
     .assign(lower=val_preds_post[0.1])
     .assign(upper=val_preds_post[0.9])
-    .pipe(clip_first_month)
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -201,16 +204,6 @@ test_preds_df = (
     .assign(sales=test_preds_post[0.5])
     .assign(lower=test_preds_post[0.1])
     .assign(upper=test_preds_post[0.9])
-    .pipe(clip_first_month)
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
-
-
-# %%
-# Coefficients
-coefs = pipes[0.5][-1].coef_
-keys = select_cols
-# %%
-dict(zip(keys, coefs))
-# %%

@@ -5,18 +5,18 @@ import numpy as np
 
 sys.path.append("../")
 from metrics.metric_participants import (ComputeMetrics, print_metrics)
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.impute import SimpleImputer
-from sktools import IsEmptyExtractor
+from sklearn.preprocessing import StandardScaler
+from sklego.preprocessing import ColumnSelector
+from sklego.meta import GroupedPredictor, GroupedTransformer
 from lightgbm import LGBMRegressor
 from category_encoders import TargetEncoder
-from sklearn.linear_model import QuantileRegressor
-from sklego.preprocessing import ColumnSelector 
-from sklearn.preprocessing import StandardScaler
 import random
 
 from eda.checker import check_train_test
-from tools.postprocessing import clip_first_month, postprocess_predictions
+from tools.postprocessing import (postprocess_predictions, clip_first_month)
+from tools.impute import PandasSimpleImputer, PandasStandardScaler
 
 random.seed(0)
 
@@ -35,7 +35,7 @@ market_size = pd.read_csv("../data/market_size.csv")
 # For reproducibility
 random.seed(0)
 VAL_SIZE = 38
-SUBMISSION_NAME = "linear_model_simple"
+SUBMISSION_NAME = "split_gbm_sklego"
 RETRAIN = True
 
 # %% Training weights
@@ -86,6 +86,7 @@ y_test = df_feats.query("validation.isnull()", engine="python").sales
 check_train_test(X_train, X_val)
 check_train_test(X_train, X_test, threshold=0.3)
 check_train_test(X_val, X_test)
+
 # %%
 select_cols = [
     'whichBrand',
@@ -97,53 +98,106 @@ select_cols = [
     'sales_brand_12_market',
     'month_brand',
     'month',
-    'brand'
 ]
 
+
+select_cols = [
+    # "month_brand",
+    "sales_brand_3",
+    "inverse_tier_f2f",
+    "hcp_distinct_Internal medicine / pneumology",
+    "sales_brand_12_market_per_region",
+    "sales_brand_12_market",
+    'no. openings_Pediatrician',
+    'tier_openings_Internal medicine / pneumology',
+    'area_x',
+    'whichBrand',
+]
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
 # %%
-models = {}
+lgbms = {}
 pipes = {}
+transforms = {}
+transforms_gr = {}
 train_preds = {}
 val_preds = {}
 test_preds = {}
 
 for quantile in [0.5, 0.1, 0.9]:
 
-    print("Quantile:", quantile)
-    models[quantile] = QuantileRegressor(
-        quantile=quantile,
-        alpha=0,
-        solver="highs-ds"
+    lgbms[quantile] = GroupedPredictor(
+        LGBMRegressor(
+            n_jobs=-1,
+            n_estimators=50,
+            objective="quantile",
+            alpha=quantile,
+        ),
+        groups="whichBrand",
     )
+
+    transforms[quantile] = Pipeline([
+            ("regular", Pipeline([
+                ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
+                ("selector", ColumnSelector(columns=select_cols)),
+                ("imputer", PandasSimpleImputer(strategy="median", add_indicator=True)), 
+            ])),
+    ])
+
+    transforms_gr[quantile] = Pipeline([
+            ("grouped", Pipeline([
+                ("selector", ColumnSelector(columns=select_cols)),
+                ("imputer", PandasSimpleImputer(strategy="median", add_indicator=True)),
+                ("scaler", GroupedTransformer(StandardScaler(), groups="whichBrand")),
+            ]))
+    ])
 
     pipes[quantile] = Pipeline(
         [   
-            ("te", TargetEncoder(cols=["month_brand", "month", "brand"])),
-            ("selector", ColumnSelector(columns=select_cols)),
-            ("imputer", SimpleImputer(strategy="median", add_indicator=True)), 
-            ("scale", StandardScaler()),
-            ("qr", models[quantile])
+            ("lgb", lgbms[quantile])
         ]
     )
 
-    # Fit cv model
-    pipes[quantile].fit(X_train, y_train)
-    # , qr__sample_weight=weights_train)
+    transforms[quantile].fit(X_train, y_train)
+    transforms_gr[quantile].fit(X_train, y_train)
+    X_train_transformed = transforms[quantile].transform(X_train)
+    X_gr_transformed = pd.DataFrame(transforms_gr[quantile].transform(X_train))
+    X_train_transformed = pd.concat([X_train_transformed, X_gr_transformed], axis=1)
+    
+    X_val_transformed = transforms[quantile].transform(X_val)
+    X_gr_transformed = pd.DataFrame(transforms_gr[quantile].transform(X_val))
+    X_val_transformed = pd.concat([X_val_transformed, X_gr_transformed], axis=1)
 
-    train_preds[quantile] = pipes[quantile].predict(X_train)
-    val_preds[quantile] = pipes[quantile].predict(X_val)
+    pipes[quantile].fit(X_train_transformed, y_train)
+    # , lgb__sample_weight=weights_train)
+
+    train_preds[quantile] = pipes[quantile].predict(X_train_transformed)
+    val_preds[quantile] = pipes[quantile].predict(X_val_transformed)
+
 
     if RETRAIN:
-        pipes[quantile].fit(X_full, y_full)
-        # , qr__sample_weight=weights_full)
-    test_preds[quantile] = pipes[quantile].predict(X_test)
+        transforms[quantile].fit(X_full, y_full)
+        transforms_gr[quantile].fit(X_full, y_full)
+        X_full_transformed = transforms[quantile].transform(X_full)
+        X_gr_transformed = pd.DataFrame(transforms_gr[quantile].transform(X_full))
+        X_full_transformed = pd.concat([X_full_transformed, X_gr_transformed], axis=1)
+        pipes[quantile].fit(X_full_transformed, y_full)
+        # , lgb__sample_weight=weights_full)
+    
+    X_test_transformed = transforms[quantile].transform(X_test)
+    X_gr_transformed = pd.DataFrame(transforms_gr[quantile].transform(X_test))
+    X_test_transformed = pd.concat([X_test_transformed, X_gr_transformed], axis=1)
+
+    test_preds[quantile] = pipes[quantile].predict(X_test_transformed)
+
 
 # %% Postprocess
 train_preds_post = postprocess_predictions(train_preds)
 val_preds_post = postprocess_predictions(val_preds)
 test_preds_post = postprocess_predictions(test_preds)
+
+# %% Train prediction
+train_preds_post
 
 # %% Train prediction
 train_preds_df = (
@@ -152,7 +206,6 @@ train_preds_df = (
     .assign(sales=train_preds_post[0.5])
     .assign(lower=train_preds_post[0.1])
     .assign(upper=train_preds_post[0.9])
-    .pipe(clip_first_month)
 )
 
 ground_truth_train = df_feats.query("validation == 0").loc[
@@ -161,19 +214,6 @@ ground_truth_train = df_feats.query("validation == 0").loc[
 
 print_metrics(train_preds_df, sales_train, ground_truth_train)
 
-# %% Train prediction
-train_preds_df = (
-    df_feats
-    .query("validation == 0")
-    .assign(sales=train_preds_post[0.5])
-    .assign(lower=train_preds_post[0.1])
-    .assign(upper=train_preds_post[0.9])
-    .pipe(clip_first_month)
-    .assign(target=y_train)
-    .to_csv('../eda/train_features.csv', index=False)
-)
-
-
 # %% Validation prediction
 val_preds_df = (
     df_feats.query("validation == 1")
@@ -181,7 +221,6 @@ val_preds_df = (
     .assign(sales=val_preds_post[0.5])
     .assign(lower=val_preds_post[0.1])
     .assign(upper=val_preds_post[0.9])
-    .pipe(clip_first_month)
 )
 
 ground_truth_val = df_feats.query("validation == 1").loc[
@@ -201,16 +240,6 @@ test_preds_df = (
     .assign(sales=test_preds_post[0.5])
     .assign(lower=test_preds_post[0.1])
     .assign(upper=test_preds_post[0.9])
-    .pipe(clip_first_month)
 )
 
 test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
-
-
-# %%
-# Coefficients
-coefs = pipes[0.5][-1].coef_
-keys = select_cols
-# %%
-dict(zip(keys, coefs))
-# %%
