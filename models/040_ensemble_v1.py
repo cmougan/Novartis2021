@@ -5,13 +5,13 @@ sys.path.append("../")
 
 from tools.postprocessing import clip_first_month, postprocess_submissions, crop_max
 from metrics.metric_participants import (ComputeMetrics, print_metrics)
-from memo import memlist, grid, Runner
+from memo import memlist, grid, Runner, random_grid
 
 
 files = [
     # "empty_extractor_target_encoder",
     "gbm_time_evol",
-    "linear_model_time_evol",
+    # "linear_model_time_evol",
     "linear_model_simple",
     "linear_model_grouped",
     "linear_model_feat_plus",
@@ -86,42 +86,34 @@ submissions['NN']['val'] = fix_nn_submission(submissions_nn_val)
 submissions['NN']['submission'] = fix_nn_submission(submissions_nn)
 
 # %%
-
-def mix(d1, d2, weight, mix_interval=True, mix_sales=True, sales_winner=1, interval_winner=1):
+def mix(d1, d2, weight_sales, weight_interval):
     d = d1.copy()
-    if mix_sales:
-        d['sales'] = d1['sales'] * weight + d2['sales'] * (1 - weight)
-    elif sales_winner == 1:
-        d['sales'] = d1['sales']
-    else:
-        d['sales'] = d2['sales']
-    
-    if mix_interval:
-        d['upper'] = d1['upper'] * weight + d2['upper'] * (1 - weight)
-        d['lower'] = d1['lower'] * weight + d2['lower'] * (1 - weight)
-    elif interval_winner == 1:
-        d['upper'] = d1['upper']
-        d['lower'] = d1['lower']
-    else:
-        d['upper'] = d2['upper']
-        d['lower'] = d2['lower']
+    d['sales'] = d1['sales'] * weight_sales + d2['sales'] * (1 - weight_sales)
+    d['upper'] = d1['upper'] * weight_interval + d2['upper'] * (1 - weight_interval)
+    d['lower'] = d1['lower'] * weight_interval + d2['lower'] * (1 - weight_interval)
 
     return d
+
+
+def double_mix(d1, d2, d3, weight_sales_1, weight_interval_1, weight_sales_2, weight_interval_2):
+    mix_1 = mix(d1, d2, weight_sales_1, weight_interval_1)
+    return mix(mix_1, d3, weight_sales_2, weight_interval_2)
 # %%
 
 data = []
 
 
 @memlist(data=data)
-def mixing_output(weight, submission_1, submission_2, postprocess=False, mix_interval=True, mix_sales=True, sales_winner=1, interval_winner=1):
+def mixing_output(submission_1, submission_2, postprocess=True, weight_sales=0.5, weight_interval=0.5):
+    # Don't want to do dummy ensembles
+    if submission_1 == submission_2:
+        return {"accuracy": 1000, "deviation": 1000}
+
     mixed = mix(
         submissions[submission_1]['val'], 
         submissions[submission_2]['val'],
-        weight,
-        mix_interval=mix_interval,
-        mix_sales=mix_sales,
-        sales_winner=sales_winner,
-        interval_winner=interval_winner
+        weight_sales,
+        weight_interval
     )
 
     if postprocess:
@@ -132,10 +124,12 @@ def mixing_output(weight, submission_1, submission_2, postprocess=False, mix_int
 # %%
 
 # data = []
-settings = grid(
-    weight=[0, 0.25, 0.5, 0.75, 1.0],
+settings = random_grid(
+    weight_sales=[0, 0.25, 0.5, 0.75, 1.0],
+    weight_interval=[0, 0.25, 0.5, 0.75, 1.0],
     submission_1=files,
     submission_2=files,
+    n=100
     # postprocess=[True, False], 
     # mix_interval=[True, False], mix_sales=[True, False], sales_winner=[1, 2], interval_winner=[1, 2]
 )
@@ -154,7 +148,6 @@ df_results.groupby(['accuracy', 'deviation'], as_index=False).first().sort_value
 
 # %%
 df_results.groupby(['accuracy', 'deviation'], as_index=False).first().sort_values(by=['accuracy']).head(20)
-
 
 # %%
 ensemble_submission = mix(
