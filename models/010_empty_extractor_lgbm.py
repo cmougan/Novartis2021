@@ -27,6 +27,10 @@ brands_3_12 = pd.read_csv("../data/features/brand_3_12_market_features_lagged.cs
 rte_basic = pd.read_csv("../data/features/rte_basic_features.csv").drop(
     columns=["sales", "validation"]
 )
+train_correlation_features = pd.read_csv("../data/features/train_correlation_features_for_validation.csv")
+test_correlation_features = pd.read_csv("../data/features/test_correlation_features_for_validation.csv")
+correlation_features = pd.concat([train_correlation_features, test_correlation_features]).reset_index(drop=True)
+
 
 market_size = pd.read_csv("../data/market_size.csv")
 
@@ -43,7 +47,6 @@ market_size = (
     .rename(columns={"sales": 'market_size'})
 )
 
-market_size
 
 # %% Add region data
 df_feats = df_full.merge(df_region, on="region", how="left")
@@ -58,6 +61,9 @@ df_feats["whichBrand"] = np.where(df_feats.brand == "brand_1", 1, 0)
 df_feats = df_feats.merge(market_size, on='region', how="left")
 
 df_feats['month_brand'] = df_feats.month + '_' + df_feats.brand
+df_feats = df_feats.merge(
+    correlation_features, on=["month", "region"], how="left"
+)
 
 df_feats['market_estimation'] = (
     df_feats.sales_brand_12_market * df_feats.sales_brand_3
@@ -83,14 +89,14 @@ X_full = df_feats.query("validation.notnull()", engine="python").drop(
 y_full = df_feats.query("validation.notnull()", engine="python").sales
 weights_full = df_feats.query("validation.notnull()", engine="python").weight
 
-X_test = df_feats.query("validation.isnull()", engine="python").drop(
-    columns=cols_to_drop
-)
-y_test = df_feats.query("validation.isnull()", engine="python").sales
+# X_test = df_feats.query("validation.isnull()", engine="python").drop(
+#     columns=cols_to_drop
+# )
+# y_test = df_feats.query("validation.isnull()", engine="python").sales
 
-check_train_test(X_train, X_val)
-check_train_test(X_train, X_test, threshold=0.3)
-check_train_test(X_val, X_test)
+# check_train_test(X_train, X_val)
+# check_train_test(X_train, X_test, threshold=0.3)
+# check_train_test(X_val, X_test)
 
 # %%
 select_cols = [
@@ -103,6 +109,12 @@ select_cols = [
     'sales_brand_12_market',
     'month_brand',
     'month',
+    'brand_1_similar_mean',
+    'brand_2_similar_mean',
+    'brand_1_similar_percentile_10',
+    'brand_2_similar_percentile_10',
+    'brand_1_similar_percentile_90',
+    'brand_2_similar_percentile_90'
 ]
 
 
@@ -118,6 +130,7 @@ select_cols = [
     'area_x',
     'market_estimation'
 ]
+
 assert len([col for col in X_train.columns if col in select_cols]) == len(select_cols)
 
 # %%
@@ -156,16 +169,16 @@ for quantile in [0.5, 0.1, 0.9]:
     if RETRAIN:
         pipes[quantile].fit(X_full, y_full)
         # , lgb__sample_weight=weights_full)
-    test_preds[quantile] = pipes[quantile].predict(X_test)
+    # test_preds[quantile] = pipes[quantile].predict(X_test)
 
 
 # %% Postprocess
 train_preds_post = postprocess_predictions(train_preds)
 val_preds_post = postprocess_predictions(val_preds)
-test_preds_post = postprocess_predictions(test_preds)
+# test_preds_post = postprocess_predictions(test_preds)
 
 # %% Train prediction
-train_preds_post
+# train_preds_post
 
 # %% Train prediction
 train_preds_df = (
@@ -202,12 +215,12 @@ val_preds_df.to_csv(f"../data/validation/{SUBMISSION_NAME}_val.csv", index=False
 
 
 # %% Test prediction
-test_preds_df = (
-    df_feats.query("validation.isnull()", engine="python")
-    .loc[:, ["month", "region", "brand"]]
-    .assign(sales=test_preds_post[0.5])
-    .assign(lower=test_preds_post[0.1])
-    .assign(upper=test_preds_post[0.9])
-)
-
-test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
+# test_preds_df = (
+#     df_feats.query("validation.isnull()", engine="python")
+#     .loc[:, ["month", "region", "brand"]]
+#     .assign(sales=test_preds_post[0.5])
+#     .assign(lower=test_preds_post[0.1])
+#     .assign(upper=test_preds_post[0.9])
+# )
+#
+# test_preds_df.to_csv(f"../submissions/{SUBMISSION_NAME}.csv", index=False)
