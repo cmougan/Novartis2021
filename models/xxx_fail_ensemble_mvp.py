@@ -1,5 +1,6 @@
 # %%
 import pandas as pd
+from copy import deepcopy
 import sys
 sys.path.append("../")
 
@@ -30,8 +31,8 @@ class Submission(object):
         self.submission_df = pd.read_csv(f"../submissions/{self.name}.csv")
         self.submission_df = clip_first_month(self.submission_df)
     
-    def plus(self, other):
-        output = Submission(self.name)
+    def __add__(self, other):
+        output = deepcopy(self)
         output.val_df['sales'] += other.val_df['sales']
         output.submission_df['sales'] += other.submission_df['sales']
 
@@ -43,21 +44,16 @@ class Submission(object):
 
         return output
 
-    def dot(self, other: float):
-        output = Submission(self.name)
-        print(other)
-        print(output.val_df['sales'].head())
-        print((output.val_df['sales'] * other).head())
-        output.val_df['sales'] = output.val_df['sales'] * other
-        print("After")
-        print(output.val_df['sales'].head())
-        # output.submission_df['sales'] *= other
+    def __mul__(self, other: float):
+        output = deepcopy(self)
+        output.val_df['sales'] *= other
+        output.submission_df['sales'] *= other
 
-        output.val_df['lower'] = output.val_df['lower'] * other
-        # output.submission_df['lower'] *= other
+        output.val_df['lower'] *= other
+        output.submission_df['lower'] *= other
 
-        output.val_df['upper']*= output.val_df['upper'] * other
-        # output.submission_df['upper'] *= other
+        output.val_df['upper'] *= other
+        output.submission_df['upper'] *= other
 
         return output
     
@@ -70,8 +66,13 @@ for file in files:
     submissions[file] = Submission(file)
 
 # %%
-(submissions["linear_model_simple"] + submissions["linear_model_simple"]).dot(0.5).val_df
+(
+    (
+        submissions["linear_model_simple"] + submissions["linear_model_simple"]
+    ) * 0.5
+).eval_preds()
+
 
 # %%
-submissions["linear_model_simple"].val_df
+submissions["linear_model_simple"].eval_preds()
 # %%
